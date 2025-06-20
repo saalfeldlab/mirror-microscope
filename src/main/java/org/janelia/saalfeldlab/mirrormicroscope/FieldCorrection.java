@@ -23,7 +23,6 @@ import net.imglib2.realtransform.RealViews;
 import net.imglib2.realtransform.Scale3D;
 import net.imglib2.realtransform.ScaleAndTranslation;
 import net.imglib2.realtransform.distortion.SphericalCurvatureZDistortion;
-//import net.imglib2.realtransform.distortion.SphericalCurvatureZDistortion;
 import net.imglib2.type.NativeType;
 import net.imglib2.type.numeric.NumericType;
 import net.imglib2.view.Views;
@@ -54,6 +53,9 @@ public class FieldCorrection implements Runnable
 	@Option( names = { "-d", "--datset-pattern" }, description = "Dataset pattern, default: (setup\\%d)", required = false )
 	private String datasetPattern = "setup%d";
 
+	@Option( names = { "-i", "--inverse" }, fallbackValue = "true", description = "Flag to inverst distortion transformation.", required = false )
+	private boolean inverse = false;
+
 	@Option( names = { "-j", "--num-jobs" }, description = "Number of threads", required = false )
 	private int nThreads=1;
 
@@ -81,7 +83,7 @@ public class FieldCorrection implements Runnable
 	// pixel to physical resolution (after magnification)
 	final double rx = 0.157; 	// um / pix 
 	final double ry = 0.157;	// um / pix
-	final double rz = 1.0;	// um / pix
+	final double rz = 1.0;		// um / pix
 
 	// camera to image scaling factors
 	double pixSpacingX;
@@ -113,6 +115,7 @@ public class FieldCorrection implements Runnable
 		System.out.println( "Processing application with:" );
 		System.out.println( "  - Root directory: " + inputRoot );
 		System.out.println( "  - Setup ID: " + setupId );
+		System.out.println( "  - inverse: " + inverse );
 		
 		loadCameraTranslations();
 		RandomAccessibleInterval< T > rawImg = read();
@@ -207,7 +210,10 @@ public class FieldCorrection implements Runnable
 	
 	public InvertibleRealTransform distortionTransform() {
 
-		return new SphericalCurvatureZDistortion( 3, 2, R );
+		if ( inverse )
+			return new SphericalCurvatureZDistortion( 3, 2, R );
+		else
+			return new SphericalCurvatureZDistortion( 3, 2, R ).inverse();
 	}
 	
 	/**
@@ -226,7 +232,7 @@ public class FieldCorrection implements Runnable
 	public InvertibleRealTransform totalDistortionCorrectionTransform(int setupId) {
 		return concatenate( 
 				cameraToImage( setupId ),
-				distortionTransform().inverse(),
+				distortionTransform(),
 				imageToCamera( setupId ));
 	}
 	
