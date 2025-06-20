@@ -3,9 +3,10 @@ package org.janelia.saalfeldlab.mirrormicroscope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 
 import org.janelia.saalfeldlab.n5.DatasetAttributes;
 import org.janelia.saalfeldlab.n5.N5Reader;
@@ -52,6 +53,9 @@ public class FieldCorrection implements Runnable
 	
 	@Option( names = { "-d", "--datset-pattern" }, description = "Dataset pattern, default: (setup\\%d)", required = false )
 	private String datasetPattern = "setup%d";
+
+	@Option( names = { "-j", "--num-jobs" }, description = "Number of threads", required = false )
+	private int nThreads=1;
 
 	private N5Reader n5r;
 	private N5Writer n5w;
@@ -139,11 +143,25 @@ public class FieldCorrection implements Runnable
 		return img;
 	}
 
-	private < T extends NumericType< T > & NativeType< T > > void write( RandomAccessibleInterval< T > img ) {
-
-		n5w = new N5Factory().openWriter(outputRoot);
+	private < T extends NumericType< T > & NativeType< T > > void write( RandomAccessibleInterval< T > img )
+	{
+		n5w = new N5Factory().openWriter( outputRoot );
 		final String outputDset = String.format( datasetPattern, setupId );
-		N5Utils.save( img, n5w, outputDset, inputAttributes.getBlockSize(), inputAttributes.getCompression() );
+		if ( nThreads == 1 )
+			N5Utils.save( img, n5w, outputDset, inputAttributes.getBlockSize(), inputAttributes.getCompression() );
+		else
+			try
+			{
+				N5Utils.save( img, n5w, outputDset, inputAttributes.getBlockSize(), inputAttributes.getCompression(), Executors.newFixedThreadPool( nThreads ) );
+			}
+			catch ( InterruptedException e )
+			{
+				e.printStackTrace();
+			}
+			catch ( ExecutionException e )
+			{
+				e.printStackTrace();
+			}
 	}
 
 	public < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > runCorrection( RandomAccessibleInterval< T > rawImg)
