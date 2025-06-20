@@ -141,8 +141,24 @@
 		</dependency>
 		<dependency>
 			<groupId>org.janelia.saalfeldlab</groupId>
+			<artifactId>n5-google-cloud</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.janelia.saalfeldlab</groupId>
+			<artifactId>n5-aws-s3</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.janelia.saalfeldlab</groupId>
+			<artifactId>n5-blosc</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.janelia</groupId>
+			<artifactId>n5-zstandard</artifactId>
+			<version>${n5-zstandard.version}</version> <!-- TEMP: Until next pom-scijava release. -->
+		</dependency>
+		<dependency>
+			<groupId>org.janelia.saalfeldlab</groupId>
 			<artifactId>n5-universe</artifactId>
-			<version>${n5-universe.version}</version>
 		</dependency>
         <dependency>
             <groupId>info.picocli</groupId>
