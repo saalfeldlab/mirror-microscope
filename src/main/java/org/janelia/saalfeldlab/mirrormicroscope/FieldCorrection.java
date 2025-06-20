@@ -21,6 +21,7 @@ import net.imglib2.realtransform.InvertibleRealTransformSequence;
 import net.imglib2.realtransform.RealViews;
 import net.imglib2.realtransform.Scale3D;
 import net.imglib2.realtransform.ScaleAndTranslation;
+import net.imglib2.realtransform.distortion.SphericalCurvatureZDistortion;
 //import net.imglib2.realtransform.distortion.SphericalCurvatureZDistortion;
 import net.imglib2.type.NativeType;
 import net.imglib2.type.numeric.NumericType;
@@ -63,8 +64,7 @@ public class FieldCorrection implements Runnable
 	 */
 	private final double m0 = 0.02891;		// nominal magnification (image to object)
 	private final double m1 = 8.318e-9;		// magnification distortion
-//	private final double R 	= 47.14 * 1000; // um	
-	private final double R 	= 8000;  // um	
+	private final double R 	= 47.14 * 1000; // um
 
 	/*
 	 *  camera / imaging parameters
@@ -189,8 +189,7 @@ public class FieldCorrection implements Runnable
 	
 	public InvertibleRealTransform distortionTransform() {
 
-//		return new SphericalCurvatureZDistortion( 3, 2, R );
-		return identity();
+		return new SphericalCurvatureZDistortion( 3, 2, R );
 	}
 	
 	/**
@@ -258,15 +257,6 @@ public class FieldCorrection implements Runnable
 		{
 			e.printStackTrace();
 		}
-
-		cameraTranslationsPixelUnits.entrySet().forEach( e -> {
-			System.out.println( e.getKey() +  " : " + Arrays.toString( e.getValue() ));
-		});
-		System.out.println("");
-		cameraTranslationsMicronUnits.entrySet().forEach( e -> {
-			System.out.println( e.getKey() +  " : " + Arrays.toString( e.getValue() ));
-		});
-
 	}
 
 }
