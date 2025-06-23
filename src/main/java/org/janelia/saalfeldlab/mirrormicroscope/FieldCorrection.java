@@ -3,6 +3,7 @@ package org.janelia.saalfeldlab.mirrormicroscope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -14,9 +15,12 @@ import org.janelia.saalfeldlab.n5.N5Writer;
 import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 import org.janelia.saalfeldlab.n5.universe.N5Factory;
 
+import net.imglib2.Interval;
 import net.imglib2.RandomAccessibleInterval;
+import net.imglib2.RealPoint;
 import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
+import net.imglib2.iterator.IntervalIterator;
 import net.imglib2.realtransform.InvertibleRealTransform;
 import net.imglib2.realtransform.InvertibleRealTransformSequence;
 import net.imglib2.realtransform.RealViews;
@@ -58,6 +62,9 @@ public class FieldCorrection implements Runnable
 
 	@Option( names = { "-j", "--num-jobs" }, description = "Number of threads", required = false )
 	private int nThreads=1;
+
+	@Option( names = { "--skip-write" }, fallbackValue = "false", description = "Skip write, debug only.", required = false )
+	private boolean skipWrite;
 
 	private N5Reader n5r;
 	private N5Writer n5w;
@@ -121,7 +128,8 @@ public class FieldCorrection implements Runnable
 		RandomAccessibleInterval< T > rawImg = read();
 		RandomAccessibleInterval< T > correctedImg = runCorrection(rawImg);
 
-		write(correctedImg);
+		if ( !skipWrite )
+			write( correctedImg );
 	}
 
 	private < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > read() {
@@ -138,7 +146,7 @@ public class FieldCorrection implements Runnable
 		wx = nx * rx;
 		wy = ny * ry;
 		wz = nz * rz;
-		
+
 		pixSpacingX = rx / m0;
 		pixSpacingY = ry / m0;
 		pixSpacingZ = rz;
@@ -169,6 +177,13 @@ public class FieldCorrection implements Runnable
 
 	public < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > runCorrection( RandomAccessibleInterval< T > rawImg)
 	{
+		System.out.println( "  setupId: " + setupId);
+		System.out.println( "  tlation: " + Arrays.toString( cameraTranslationsMicronUnits.get( setupId )));
+
+		final double[] minMax = computeMinMaxOffsets( totalDistortionCorrectionTransform( setupId ), rawImg );
+		System.out.println( "  min offset: " + minMax[ 0 ] );
+		System.out.println( "  max offset: " + minMax[ 1 ] );
+
 		return Views.interval( 
 			Views.raster( RealViews.transform( 
 				Views.interpolate( Views.extendZero(rawImg), new NLinearInterpolatorFactory<>()),
@@ -281,6 +296,36 @@ public class FieldCorrection implements Runnable
 		{
 			e.printStackTrace();
 		}
+	}
+
+	public static double[] computeMinMaxOffsets(InvertibleRealTransform distortion, Interval interval) {
+
+	    // Ensure we have at least 3 dimensions
+	    if (interval.numDimensions() < 3)
+	        throw new IllegalArgumentException("Interval must have at least 3 dimensions for z-translation computation");
+
+	    double minZTranslation = Double.POSITIVE_INFINITY;
+	    double maxZTranslation = Double.NEGATIVE_INFINITY;
+
+	    IntervalIterator iterator = new IntervalIterator(interval);
+		RealPoint transformedPoint = new RealPoint(interval.numDimensions());
+
+		while ( iterator.hasNext() )
+		{
+			iterator.fwd();
+
+			// Apply distortion transformation
+			distortion.apply( iterator, transformedPoint );
+
+			// Calculate z-translation (difference in z-coordinate)
+			double zTranslation = transformedPoint.getDoublePosition( 2 ) - iterator.getDoublePosition( 2 );
+
+		    // Update min/max
+	        minZTranslation = Math.min(minZTranslation, zTranslation);
+	        maxZTranslation = Math.max(maxZTranslation, zTranslation);
+		}
+
+	    return new double[]{minZTranslation, maxZTranslation};
 	}
 
 }
