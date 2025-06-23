@@ -15,6 +15,7 @@ import org.janelia.saalfeldlab.n5.N5Writer;
 import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 import org.janelia.saalfeldlab.n5.universe.N5Factory;
 
+import net.imglib2.FinalInterval;
 import net.imglib2.Interval;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.RealPoint;
@@ -29,6 +30,7 @@ import net.imglib2.realtransform.ScaleAndTranslation;
 import net.imglib2.realtransform.distortion.SphericalCurvatureZDistortion;
 import net.imglib2.type.NativeType;
 import net.imglib2.type.numeric.NumericType;
+import net.imglib2.util.Intervals;
 import net.imglib2.view.Views;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -307,12 +309,16 @@ public class FieldCorrection implements Runnable
 	    double minZTranslation = Double.POSITIVE_INFINITY;
 	    double maxZTranslation = Double.NEGATIVE_INFINITY;
 
-	    IntervalIterator iterator = new IntervalIterator(interval);
-		RealPoint transformedPoint = new RealPoint(interval.numDimensions());
+		// only need to check corners
+		IntervalIterator iterator = new IntervalIterator( Intervals.createMinMax( 0, 0, 0, 1, 1, 1 ) );
+		RealPoint cornerPoint = new RealPoint( interval.numDimensions() );
+		RealPoint transformedPoint = new RealPoint( interval.numDimensions() );
 
 		while ( iterator.hasNext() )
 		{
 			iterator.fwd();
+
+			corner(interval, iterator, cornerPoint);
 
 			// Apply distortion transformation
 			distortion.apply( iterator, transformedPoint );
@@ -326,6 +332,19 @@ public class FieldCorrection implements Runnable
 		}
 
 	    return new double[]{minZTranslation, maxZTranslation};
+	}
+
+	private static void corner(Interval interval, IntervalIterator cornerIterator, RealPoint p) {
+
+		int nd = interval.numDimensions();
+		for ( int i = 0; i < nd; i++ )
+		{
+			if ( cornerIterator.getLongPosition( i ) > 0 )
+				p.setPosition( interval.max( i ), i );
+			else
+				p.setPosition( 0, i );
+		}
+
 	}
 
 }
