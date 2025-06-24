@@ -24,6 +24,7 @@ import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.iterator.IntervalIterator;
 import net.imglib2.realtransform.InvertibleRealTransform;
 import net.imglib2.realtransform.InvertibleRealTransformSequence;
+import net.imglib2.realtransform.Translation3D;
 import net.imglib2.realtransform.RealViews;
 import net.imglib2.realtransform.Scale3D;
 import net.imglib2.realtransform.ScaleAndTranslation;
@@ -59,14 +60,14 @@ public class FieldCorrection implements Runnable
 	@Option( names = { "-d", "--datset-pattern" }, description = "Dataset pattern, default: (setup\\%d)", required = false )
 	private String datasetPattern = "setup%d";
 
-	@Option( names = { "-i", "--inverse" }, fallbackValue = "true", description = "Flag to inverst distortion transformation.", required = false )
+	@Option( names = { "-i", "--inverse" }, fallbackValue = "true", arity = "0..1", description = "Flag to inverst distortion transformation.", required = false )
 	private boolean inverse = false;
 
 	@Option( names = { "-j", "--num-jobs" }, description = "Number of threads", required = false )
 	private int nThreads=1;
 
-	@Option( names = { "--skip-write" }, fallbackValue = "false", description = "Skip write, debug only.", required = false )
-	private boolean skipWrite;
+	@Option( names = { "--skip-write" }, fallbackValue = "true", arity = "0..1", description = "Flag to skip writing, for debugging.", required = false )
+	private boolean skipWrite = false;
 
 	private N5Reader n5r;
 	private N5Writer n5w;
@@ -179,17 +180,26 @@ public class FieldCorrection implements Runnable
 
 	public < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > runCorrection( RandomAccessibleInterval< T > rawImg)
 	{
-		System.out.println( "  setupId: " + setupId);
+
+        System.out.println( "  setupId: " + setupId);
 		System.out.println( "  tlation: " + Arrays.toString( cameraTranslationsMicronUnits.get( setupId )));
 
-		final double[] minMax = computeMinMaxOffsets( totalDistortionCorrectionTransform( setupId ), rawImg );
+		InvertibleRealTransformSequence totalDistortion = totalDistortionCorrectionTransform( setupId );
+		final double[] minMax = computeMinMaxOffsets( totalDistortion, rawImg );
 		System.out.println( "  min offset: " + minMax[ 0 ] );
 		System.out.println( "  max offset: " + minMax[ 1 ] );
+
+        final double minDisplacement = minMax[0];
+		totalDistortion.add( new Translation3D(new double[] {0, 0, -minDisplacement}) );
+
+		final double[] minMaxAfter = computeMinMaxOffsets( totalDistortion, rawImg );
+		System.out.println( "  min offset: " + minMaxAfter[ 0 ] );
+		System.out.println( "  max offset: " + minMaxAfter[ 1 ] );
 
 		return Views.interval( 
 			Views.raster( RealViews.transform( 
 				Views.interpolate( Views.extendZero(rawImg), new NLinearInterpolatorFactory<>()),
-				totalDistortionCorrectionTransform( setupId ))),
+				totalDistortion)),
 			rawImg);
 	}
 
@@ -246,7 +256,7 @@ public class FieldCorrection implements Runnable
 	 * 
 	 * @return
 	 */
-	public InvertibleRealTransform totalDistortionCorrectionTransform(int setupId) {
+	public InvertibleRealTransformSequence totalDistortionCorrectionTransform(int setupId) {
 		return concatenate( 
 				cameraToImage( setupId ),
 				distortionTransform(),
