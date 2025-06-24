@@ -331,7 +331,7 @@ public class FieldCorrection implements Runnable
 			corner(interval, iterator, cornerPoint);
 
 			// Apply distortion transformation
-			distortion.apply( iterator, transformedPoint );
+			distortion.apply( cornerPoint, transformedPoint );
 
 			// Calculate z-translation (difference in z-coordinate)
 			double zTranslation = transformedPoint.getDoublePosition( 2 ) - iterator.getDoublePosition( 2 );
