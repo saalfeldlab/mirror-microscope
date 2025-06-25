@@ -184,7 +184,6 @@ public class FieldCorrection implements Runnable
 
 	public < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > runCorrection( RandomAccessibleInterval< T > rawImg)
 	{
-
         System.out.println( "  setupId: " + setupId);
 		System.out.println( "  tlation: " + Arrays.toString( cameraTranslationsMicronUnits.get( setupId )));
 
@@ -193,9 +192,7 @@ public class FieldCorrection implements Runnable
 		System.out.println( "  min offset: " + minMax[ 0 ] );
 		System.out.println( "  max offset: " + minMax[ 1 ] );
 
-        final double minDisplacement = minMax[0];
-		totalDistortion.add( new Translation3D(new double[] {0, 0, -minDisplacement}) );
-
+		addNormalizationOffset(totalDistortion, minMax);
 		final double[] minMaxAfter = computeMinMaxOffsets( totalDistortion, rawImg );
 		System.out.println( "  min offset: " + minMaxAfter[ 0 ] );
 		System.out.println( "  max offset: " + minMaxAfter[ 1 ] );
@@ -205,6 +202,14 @@ public class FieldCorrection implements Runnable
 				Views.interpolate( Views.extendZero(rawImg), new NLinearInterpolatorFactory<>()),
 				totalDistortion)),
 			rawImg);
+	}
+
+	private void addNormalizationOffset( InvertibleRealTransformSequence totalDistortion, double[] minMax ) {
+        final double min = minMax[0];
+        final double max = minMax[1];
+//        final double d = Math.abs( min ) > Math.abs( max ) ? -max : -min;
+        final double d = (min + max) / 2.0;
+		totalDistortion.add( new Translation3D(new double[] {0, 0, -d}) );
 	}
 
 	/**
