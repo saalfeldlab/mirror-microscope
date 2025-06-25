@@ -15,7 +15,9 @@ import org.janelia.saalfeldlab.n5.N5Writer;
 import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 import org.janelia.saalfeldlab.n5.universe.N5Factory;
 
-import net.imglib2.FinalInterval;
+import bdv.util.BdvFunctions;
+import bdv.util.BdvOptions;
+import bdv.util.BdvStackSource;
 import net.imglib2.Interval;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.RealPoint;
@@ -54,7 +56,7 @@ public class FieldCorrection implements Runnable
 	@Option( names = { "--offset-metadata" }, description = "Path to offset metadata csv", required = true )
 	private String offsetMetadataPath;
 
-	@Option( names = { "-o", "--output-root" }, description = "Output n5 root", required = true )
+	@Option( names = { "-o", "--output-root" }, description = "Output n5 root", required = false )
 	private String outputRoot;
 	
 	@Option( names = { "-d", "--datset-pattern" }, description = "Dataset pattern, default: (setup\\%d)", required = false )
@@ -65,9 +67,6 @@ public class FieldCorrection implements Runnable
 
 	@Option( names = { "-j", "--num-jobs" }, description = "Number of threads", required = false )
 	private int nThreads=1;
-
-	@Option( names = { "--skip-write" }, fallbackValue = "true", arity = "0..1", description = "Flag to skip writing, for debugging.", required = false )
-	private boolean skipWrite = false;
 
 	private N5Reader n5r;
 	private N5Writer n5w;
@@ -131,8 +130,13 @@ public class FieldCorrection implements Runnable
 		RandomAccessibleInterval< T > rawImg = read();
 		RandomAccessibleInterval< T > correctedImg = runCorrection(rawImg);
 
-		if ( !skipWrite )
+		if ( outputRoot != null )
 			write( correctedImg );
+		else {
+			final BdvOptions opts = BdvOptions.options().numRenderingThreads( nThreads );
+			final BdvStackSource< T > bdv = BdvFunctions.show( rawImg, "raw", opts );
+			BdvFunctions.show( correctedImg, "corrected", opts.addTo( bdv ));
+		}
 	}
 
 	private < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > read() {
