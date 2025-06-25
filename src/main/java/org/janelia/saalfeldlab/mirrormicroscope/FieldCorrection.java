@@ -220,7 +220,7 @@ public class FieldCorrection implements Runnable
 	public ScaleAndTranslation cameraToImage(int cameraId)
 	{
 		return new ScaleAndTranslation(
-				new double[] {pixSpacingX, pixSpacingY, pixSpacingZ},
+				new double[] {rx, ry, rz},
 				cameraTranslationsMicronUnits.get(cameraId));
 	}
 
