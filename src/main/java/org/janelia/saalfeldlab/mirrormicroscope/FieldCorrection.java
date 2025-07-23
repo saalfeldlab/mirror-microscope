@@ -12,16 +12,24 @@ import java.util.concurrent.Executors;
 import org.janelia.saalfeldlab.n5.DatasetAttributes;
 import org.janelia.saalfeldlab.n5.N5Reader;
 import org.janelia.saalfeldlab.n5.N5Writer;
+import org.janelia.saalfeldlab.n5.ij.N5ScalePyramidExporter;
 import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 import org.janelia.saalfeldlab.n5.universe.N5Factory;
+import org.janelia.saalfeldlab.n5.universe.metadata.ome.ngff.v03.OmeNgffMetadata;
+import org.janelia.saalfeldlab.n5.universe.metadata.ome.ngff.v04.NgffSingleScaleAxesMetadata;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 
 import bdv.util.BdvFunctions;
 import bdv.util.BdvOptions;
 import bdv.util.BdvStackSource;
+import ij.ImagePlus;
 import net.imglib2.Interval;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.RealPoint;
 import net.imglib2.cache.img.CachedCellImg;
+import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.iterator.IntervalIterator;
 import net.imglib2.realtransform.InvertibleRealTransform;
@@ -62,8 +70,11 @@ public class FieldCorrection implements Runnable
 	@Option( names = { "-d", "--datset-pattern" }, description = "Dataset pattern, default: (setup\\%d)", required = false )
 	private String datasetPattern = "setup%d";
 
-	@Option( names = { "-i", "--inverse" }, fallbackValue = "true", arity = "0..1", description = "Flag to inverst distortion transformation.", required = false )
+	@Option( names = { "-i", "--inverse" }, fallbackValue = "true", arity = "0..1", description = "Flag to invert distortion transformation.", required = false )
 	private boolean inverse = false;
+
+	@Option( names = { "-v", "--view" }, fallbackValue = "true", arity = "0..1", description = "Flag to view the transformed result.", required = false )
+	private boolean view = false;
 
 	@Option( names = { "-j", "--num-jobs" }, description = "Number of threads", required = false )
 	private int nThreads=1;
@@ -85,9 +96,9 @@ public class FieldCorrection implements Runnable
 	 *  camera / imaging parameters
 	 */
 	// pixel dimension
-	long nx = 4096;
-	long ny = 2560;
-	long nz = 4101;
+	long nx;
+	long ny;
+	long nz;
 
 	// pixel to physical resolution (after magnification)
 	final double rx = 0.157; 	// um / pix 
@@ -109,7 +120,7 @@ public class FieldCorrection implements Runnable
 	public static void main( String[] args )
 	{
 		int exitCode = new CommandLine( new FieldCorrection() ).execute( args );
-		System.exit( exitCode );
+//		System.exit( exitCode );
 	}
 
 	@Override
@@ -128,11 +139,11 @@ public class FieldCorrection implements Runnable
 		
 		loadCameraTranslations();
 		RandomAccessibleInterval< T > rawImg = read();
-		RandomAccessibleInterval< T > correctedImg = runCorrection(rawImg);
+		RandomAccessibleInterval< T > correctedImg = to5d(runCorrection(rawImg));
 
 		if ( outputRoot != null )
 			write( correctedImg );
-		else {
+		else if( view ){
 			final BdvOptions opts = BdvOptions.options().numRenderingThreads( nThreads );
 			final BdvStackSource< T > bdv = BdvFunctions.show( rawImg, "raw", opts );
 			BdvFunctions.show( correctedImg, "corrected", opts.addTo( bdv ));
@@ -163,14 +174,19 @@ public class FieldCorrection implements Runnable
 
 	private < T extends NumericType< T > & NativeType< T > > void write( RandomAccessibleInterval< T > img )
 	{
-		n5w = new N5Factory().openWriter( outputRoot );
-		final String outputDset = String.format( datasetPattern, setupId );
+		n5w = new N5Factory()
+				.zarrDimensionSeparator("/")
+				.openWriter( outputRoot );
+
+		final String baseDset = String.format( datasetPattern, setupId );
+		// bigstitcher needs the array for an ome-zarr dataset to be "/0"
+		final String arrayDset = baseDset + "/0";
 		if ( nThreads == 1 )
-			N5Utils.save( img, n5w, outputDset, inputAttributes.getBlockSize(), inputAttributes.getCompression() );
+			N5Utils.save( img, n5w, arrayDset, to5d(inputAttributes.getBlockSize()), inputAttributes.getCompression() );
 		else
 			try
 			{
-				N5Utils.save( img, n5w, outputDset, inputAttributes.getBlockSize(), inputAttributes.getCompression(), Executors.newFixedThreadPool( nThreads ) );
+				N5Utils.save( img, n5w, arrayDset, to5d(inputAttributes.getBlockSize()), inputAttributes.getCompression(), Executors.newFixedThreadPool( nThreads ) );
 			}
 			catch ( InterruptedException e )
 			{
@@ -180,14 +196,17 @@ public class FieldCorrection implements Runnable
 			{
 				e.printStackTrace();
 			}
+
+		// set metadata
+		n5w.setAttribute(baseDset, "/", buildNgffMeta());
 	}
 
 	public < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > runCorrection( RandomAccessibleInterval< T > rawImg)
 	{
-        System.out.println( "  setupId: " + setupId);
-		System.out.println( "  tlation: " + Arrays.toString( cameraTranslationsMicronUnits.get( setupId )));
+        System.out.println( "  setupId     : " + setupId);
+		System.out.println( "  tlation (um): " + Arrays.toString( cameraTranslationsMicronUnits.get( setupId )));
 
-		InvertibleRealTransformSequence totalDistortion = totalDistortionCorrectionTransform( setupId );
+		final InvertibleRealTransformSequence totalDistortion = totalDistortionCorrectionTransform( setupId );
 		final double[] minMax = computeMinMaxOffsets( totalDistortion, rawImg );
 		System.out.println( "  min offset: " + minMax[ 0 ] );
 		System.out.println( "  max offset: " + minMax[ 1 ] );
@@ -204,10 +223,19 @@ public class FieldCorrection implements Runnable
 			rawImg);
 	}
 
+	public <T extends NumericType<T> & NativeType<T>> RandomAccessibleInterval<T> to5d(RandomAccessibleInterval<T> img)
+	{
+		return Views.addDimension(Views.addDimension(img, 0, 0), 0, 0);
+	}
+
+	public int[] to5d( int[] blkSize ) {
+		return new int[]{blkSize[0], blkSize[1], blkSize[2], 1, 1};
+	}
+
 	private void addNormalizationOffset( InvertibleRealTransformSequence totalDistortion, double[] minMax ) {
         final double min = minMax[0];
         final double max = minMax[1];
-//        final double d = Math.abs( min ) > Math.abs( max ) ? -max : -min;
+//        final double d = Math.abs( min ) > Math.abs( max ) ? max : min;
         final double d = (min + max) / 2.0;
 		totalDistortion.add( new Translation3D(new double[] {0, 0, -d}) );
 	}
@@ -271,8 +299,8 @@ public class FieldCorrection implements Runnable
 				distortionTransform(),
 				imageToCamera( setupId ));
 	}
-	
-	public InvertibleRealTransformSequence concatenate( InvertibleRealTransform... transforms) {
+
+	public static InvertibleRealTransformSequence concatenate( InvertibleRealTransform... transforms) {
 
 		InvertibleRealTransformSequence renderingTransform = new InvertibleRealTransformSequence();
 		for( InvertibleRealTransform t : transforms )
@@ -282,7 +310,7 @@ public class FieldCorrection implements Runnable
 	}
 
 	public void loadCameraTranslations() {
-		
+
 		List< String > lines;
 		try
 		{
@@ -336,7 +364,6 @@ public class FieldCorrection implements Runnable
 		while ( iterator.hasNext() )
 		{
 			iterator.fwd();
-
 			corner(interval, iterator, cornerPoint);
 
 			// Apply distortion transformation
@@ -363,6 +390,38 @@ public class FieldCorrection implements Runnable
 			else
 				p.setPosition( interval.min( i ), i );
 		}
+	}
+
+	private static JsonElement buildNgffMeta() {
+		Gson gson = new Gson();
+		String s = "{\n"
+				+ "  \"multiscales\": [\n"
+				+ "    {\n"
+				+ "      \"name\": \"\",\n"
+				+ "      \"type\": \"Sample\",\n"
+				+ "      \"version\": \"0.4\",\n"
+				+ "      \"axes\": [ \n"
+				+ "        { \"type\": \"time\", \"name\": \"t\", \"unit\": \"second\" },\n"
+				+ "        { \"type\": \"channel\", \"name\": \"c\" },\n"
+				+ "        { \"type\": \"space\", \"name\": \"z\", \"unit\": \"pixel\" },\n"
+				+ "        { \"type\": \"space\", \"name\": \"y\", \"unit\": \"pixel\" },\n"
+				+ "        { \"type\": \"space\", \"name\": \"x\", \"unit\": \"pixel\" }\n"
+				+ "      ],\n"
+				+ "      \"datasets\": [\n"
+				+ "        {\n"
+				+ "          \"path\": \"0\",\n"
+				+ "          \"coordinateTransformations\": [\n"
+				+ "            { \"scale\": [ 1, 1, 1, 0.157, 0.157 ], \"type\": \"scale\" },\n"
+				+ "            { \"translation\": [ 0, 0, 0, 0, 0 ], \"type\": \"translation\" }\n"
+				+ "          ]\n"
+				+ "        }\n"
+				+ "      ],\n"
+				+ "      \"coordinateTransformations\": []\n"
+				+ "    }\n"
+				+ "  ]\n"
+				+ "}\n";
+
+		return gson.fromJson(s, JsonElement.class);
 	}
 
 }
