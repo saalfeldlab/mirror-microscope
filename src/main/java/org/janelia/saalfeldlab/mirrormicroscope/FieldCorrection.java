@@ -68,7 +68,10 @@ public class FieldCorrection implements Runnable
 	private String outputRoot;
 	
 	@Option( names = { "-d", "--datset-pattern" }, description = "Dataset pattern, default: (setup\\%d)", required = false )
-	private String datasetPattern = "setup%d";
+	private String datasetPattern = "setup%d/timepoint0/s0";
+
+	@Option( names = { "-do", "--datset-output-pattern" }, description = "Dataset output pattern, default: (setup\\%d)", required = false )
+	private String datasetOutputPattern = "setup%d";
 
 	@Option( names = { "-i", "--inverse" }, fallbackValue = "true", arity = "0..1", description = "Flag to invert distortion transformation.", required = false )
 	private boolean inverse = false;
@@ -178,7 +181,7 @@ public class FieldCorrection implements Runnable
 				.zarrDimensionSeparator("/")
 				.openWriter( outputRoot );
 
-		final String baseDset = String.format( datasetPattern, setupId );
+		final String baseDset = String.format( datasetOutputPattern, setupId );
 		// bigstitcher needs the array for an ome-zarr dataset to be "/0"
 		final String arrayDset = baseDset + "/0";
 		if ( nThreads == 1 )
