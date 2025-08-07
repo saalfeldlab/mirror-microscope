@@ -1,22 +1,15 @@
 package org.janelia.saalfeldlab.mirrormicroscope;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 
 import org.janelia.saalfeldlab.n5.DatasetAttributes;
 import org.janelia.saalfeldlab.n5.N5Reader;
 import org.janelia.saalfeldlab.n5.N5Writer;
-import org.janelia.saalfeldlab.n5.ij.N5ScalePyramidExporter;
 import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 import org.janelia.saalfeldlab.n5.universe.N5Factory;
-import org.janelia.saalfeldlab.n5.universe.metadata.ome.ngff.v03.OmeNgffMetadata;
-import org.janelia.saalfeldlab.n5.universe.metadata.ome.ngff.v04.NgffSingleScaleAxesMetadata;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
@@ -24,12 +17,10 @@ import com.google.gson.JsonElement;
 import bdv.util.BdvFunctions;
 import bdv.util.BdvOptions;
 import bdv.util.BdvStackSource;
-import ij.ImagePlus;
 import net.imglib2.Interval;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.RealPoint;
 import net.imglib2.cache.img.CachedCellImg;
-import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.iterator.IntervalIterator;
 import net.imglib2.realtransform.InvertibleRealTransform;
@@ -60,9 +51,6 @@ public class FieldCorrection implements Runnable
 
 	@Option( names = { "-s", "--setup-id" }, description = "Setup ID number", required = true )
 	private int setupId;
-
-	@Option( names = { "--offset-metadata" }, description = "Path to offset metadata csv", required = true )
-	private String offsetMetadataPath;
 
 	@Option( names = { "-o", "--output-root" }, description = "Output n5 root", required = false )
 	private String outputRoot;
@@ -123,7 +111,7 @@ public class FieldCorrection implements Runnable
 	public static void main( String[] args )
 	{
 		int exitCode = new CommandLine( new FieldCorrection() ).execute( args );
-//		System.exit( exitCode );
+		System.exit( exitCode );
 	}
 
 	@Override
@@ -314,40 +302,9 @@ public class FieldCorrection implements Runnable
 
 	public void loadCameraTranslations() {
 
-		List< String > lines;
-		try
-		{
-			lines = Files.readAllLines( Paths.get( offsetMetadataPath ) );
-			// create and fill cameraTranslations
-			cameraTranslationsPixelUnits = new HashMap<>();
-			cameraTranslationsMicronUnits = new HashMap<>();
-
-			int setupId = 0;
-			for ( String line : lines )
-			{
-				String[] split = line.split( "," );
-
-				double[] translation = new double[ 3 ];
-				translation[ 0 ] = Double.parseDouble( split[ 0 ] );
-				translation[ 1 ] = Double.parseDouble( split[ 1 ] );
-				translation[ 2 ] = Double.parseDouble( split[ 2 ] );
-
-				cameraTranslationsPixelUnits.put( setupId, translation );
-
-				double[] translationUm = new double[ 3 ];
-				translationUm[ 0 ] = rx * translation[ 0 ];
-				translationUm[ 1 ] = ry * translation[ 1 ];
-				translationUm[ 2 ] = rz * translation[ 2 ];
-
-				cameraTranslationsMicronUnits.put( setupId, translationUm );
-
-				setupId++;
-			}
-		}
-		catch ( IOException e )
-		{
-			e.printStackTrace();
-		}
+		cameraTranslationsMicronUnits = new HashMap<>();
+		for ( int setupId = 0; setupId < 600; setupId++ )
+			cameraTranslationsMicronUnits.put( setupId, CameraUtils.offset(setupId) );
 	}
 
 	public static double[] computeMinMaxOffsets(InvertibleRealTransform distortion, Interval interval) {
