@@ -16,14 +16,18 @@ public class CameraUtils {
     public static final double WIDTH_NO_OVERLAP_UM = 328;
     public static final double WIDTH_UM = 402;
 
-    public static final double[] xPositionsPhysical = DoubleStream
+    public static enum CAM_DIRECTION {X,Y};
+
+    public static CAM_DIRECTION camDirection = CAM_DIRECTION.Y;
+
+    public static final double[] varyingPositionsPhysical = DoubleStream
     		.iterate(
     				-(WIDTH_NO_OVERLAP_UM) * ROWS_PER_CAM * NUM_CAMS / 2, 
 					x -> x + ROWS_PER_CAM * WIDTH_NO_OVERLAP_UM)
     		.limit(NUM_CAMS)
     		.toArray();
 
-    public static final double[] yPositionsPhysical = DoubleStream
+    public static final double[] constantPositionsPhysical = DoubleStream
     		.generate( () -> (-SIZE_X_PIX / 2) * RX )
     		.limit(NUM_CAMS)
     		.toArray();
@@ -32,11 +36,21 @@ public class CameraUtils {
 
 		int row = setupId / 10;
 		int camera = (row / 4) % 10;
-		return new double[] {
-				xPositionsPhysical[camera],
-				yPositionsPhysical[camera],
-				0
-		};
+
+		if( camDirection == CAM_DIRECTION.Y) {
+			return new double[] {
+					constantPositionsPhysical[camera],
+					varyingPositionsPhysical[camera],
+					0
+			};
+		}
+		else  {
+			return new double[] {
+					varyingPositionsPhysical[camera],
+					constantPositionsPhysical[camera],
+					0
+			};
+		}
     }
 
 
