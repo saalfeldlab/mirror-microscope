@@ -1,7 +1,6 @@
 package org.janelia.saalfeldlab.mirrormicroscope;
 
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 
@@ -105,9 +104,6 @@ public class FieldCorrection implements Runnable
 	double wy; 	// um
 	double wz; 	// um
 
-	HashMap<Integer,double[]>  cameraTranslationsPixelUnits;
-	HashMap<Integer,double[]>  cameraTranslationsMicronUnits;
-
 	public static void main( String[] args )
 	{
 		int exitCode = new CommandLine( new FieldCorrection() ).execute( args );
@@ -122,13 +118,11 @@ public class FieldCorrection implements Runnable
 
 	private < T extends NumericType< T > & NativeType< T > > void process()
 	{
-		// Example business logic
 		System.out.println( "Processing application with:" );
 		System.out.println( "  - Root directory: " + inputRoot );
 		System.out.println( "  - Setup ID: " + setupId );
 		System.out.println( "  - inverse: " + inverse );
 		
-		loadCameraTranslations();
 		RandomAccessibleInterval< T > rawImg = read();
 		RandomAccessibleInterval< T > correctedImg = to5d(runCorrection(rawImg));
 
@@ -195,7 +189,7 @@ public class FieldCorrection implements Runnable
 	public < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > runCorrection( RandomAccessibleInterval< T > rawImg)
 	{
         System.out.println( "  setupId     : " + setupId);
-		System.out.println( "  tlation (um): " + Arrays.toString( cameraTranslationsMicronUnits.get( setupId )));
+		System.out.println( "  tlation (um): " + Arrays.toString(CameraUtils.offset(setupId)));
 
 		final InvertibleRealTransformSequence totalDistortion = totalDistortionCorrectionTransform( setupId );
 		final double[] minMax = computeMinMaxOffsets( totalDistortion, rawImg );
@@ -240,7 +234,7 @@ public class FieldCorrection implements Runnable
 	{
 		return new ScaleAndTranslation(
 				new double[] {rx, ry, rz},
-				cameraTranslationsMicronUnits.get(cameraId));
+				CameraUtils.offset(setupId));
 	}
 
 	public ScaleAndTranslation imageToCamera(int cameraId)
@@ -298,13 +292,6 @@ public class FieldCorrection implements Runnable
 			renderingTransform.add(t);
 
 		return renderingTransform;
-	}
-
-	public void loadCameraTranslations() {
-
-		cameraTranslationsMicronUnits = new HashMap<>();
-		for ( int setupId = 0; setupId < 600; setupId++ )
-			cameraTranslationsMicronUnits.put( setupId, CameraUtils.offset(setupId) );
 	}
 
 	public static double[] computeMinMaxOffsets(InvertibleRealTransform distortion, Interval interval) {

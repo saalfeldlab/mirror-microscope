@@ -94,9 +94,6 @@ public class FieldDisplacements implements Runnable
 	double wy; 	// um
 	double wz; 	// um
 
-	HashMap<Integer,double[]>  cameraTranslationsPixelUnits;
-	HashMap<Integer,double[]>  cameraTranslationsMicronUnits;
-
 	public static void main( String[] args )
 	{
 		int exitCode = new CommandLine( new FieldDisplacements() ).execute( args );
@@ -115,7 +112,6 @@ public class FieldDisplacements implements Runnable
 		System.out.println( "  - inverse: " + inverse );
 
 		final Interval interval = Intervals.createMinMax(0, 0, 0, 4096 / factor, 2650 / factor, 4101 / factor);
-		loadCameraTranslations();
 		RandomAccessibleInterval< T > displacements = displacements(interval);
 
 		if( outputBase != null ) {
@@ -131,7 +127,7 @@ public class FieldDisplacements implements Runnable
 	public < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > displacements( final Interval interval )
 	{
         System.out.println( "  setupId     : " + setupId);
-		System.out.println( "  tlation (um): " + Arrays.toString( cameraTranslationsMicronUnits.get( setupId )));
+		System.out.println( "  tlation (um): " + Arrays.toString(CameraUtils.offset(setupId)));
 
 		final InvertibleRealTransformSequence totalDistortion = totalDistortionCorrectionTransform( setupId );
 		final double[] minMax = computeMinMaxOffsets( totalDistortion, interval );
@@ -176,7 +172,7 @@ public class FieldDisplacements implements Runnable
 	 */
 	public ScaleAndTranslation cameraToImage(int cameraId)
 	{
-		final double[] tlation = cameraTranslationsMicronUnits.get(cameraId);
+		final double[] tlation = CameraUtils.offset(setupId);
 		System.out.println("translation: " + Arrays.toString(tlation));
 		return new ScaleAndTranslation(
 				new double[] {rx, ry, rz}, tlation);
@@ -231,13 +227,6 @@ public class FieldDisplacements implements Runnable
 			renderingTransform.add(t);
 
 		return renderingTransform;
-	}
-
-	public void loadCameraTranslations() {
-
-		cameraTranslationsMicronUnits = new HashMap<>();
-		for ( int setupId = 0; setupId < 600; setupId++ )
-			cameraTranslationsMicronUnits.put( setupId, CameraUtils.offset(setupId) );
 	}
 
 	public static double[] computeMinMaxOffsets(InvertibleRealTransform distortion, Interval interval) {
