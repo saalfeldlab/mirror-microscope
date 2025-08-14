@@ -61,13 +61,6 @@ public class FieldDisplacements implements Runnable
 //	private String inputDatasetPath;
 
 	/*
-	 * Optical system parameters
-	 */
-	private final double m0 = 0.02891;		// nominal magnification (image to object)
-	private final double m1 = 8.318e-9;		// magnification distortion
-	private final double R 	= 47.14 * 1000; // um
-
-	/*
 	 *  camera / imaging parameters
 	 */
 	// pixel dimension
@@ -127,7 +120,7 @@ public class FieldDisplacements implements Runnable
 	public < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > displacements( final Interval interval )
 	{
         System.out.println( "  setupId     : " + setupId);
-		System.out.println( "  tlation (um): " + Arrays.toString(CameraUtils.offset(setupId)));
+		System.out.println( "  tlation (um): " + Arrays.toString(CameraModel.position(setupId)));
 
 		final InvertibleRealTransformSequence totalDistortion = totalDistortionCorrectionTransform( setupId );
 		final double[] minMax = computeMinMaxOffsets( totalDistortion, interval );
@@ -166,42 +159,6 @@ public class FieldDisplacements implements Runnable
 	}
 
 	/**
-	 * Pixel to physical coordinates
-	 *
-	 * @return the camera transform
-	 */
-	public ScaleAndTranslation cameraToImage(int cameraId)
-	{
-		final double[] tlation = CameraUtils.offset(setupId);
-		System.out.println("translation: " + Arrays.toString(tlation));
-		return new ScaleAndTranslation(
-				new double[] {rx, ry, rz}, tlation);
-	}
-
-	public ScaleAndTranslation imageToCamera(int cameraId)
-	{
-		return cameraToImage(cameraId).inverse();
-	}
-
-	public Scale3D imageToObject()
-	{
-		return new Scale3D( m0, m0, 1 );
-	}
-
-	public Scale3D objectToImage()
-	{
-		return imageToObject().inverse();
-	}
-
-	public InvertibleRealTransform distortionTransform() {
-
-		if ( inverse )
-			return new SphericalCurvatureZDistortion( 3, 2, R );
-		else
-			return new SphericalCurvatureZDistortion( 3, 2, R ).inverse();
-	}
-	
-	/**
 	 * Returns a transformation that corrects distortion.
 	 * <p>.
 	 * The distortion transformation is modeled in physical-image space, and
@@ -215,9 +172,9 @@ public class FieldDisplacements implements Runnable
 	 */
 	public InvertibleRealTransformSequence totalDistortionCorrectionTransform(int setupId) {
 		return concatenate( 
-				cameraToImage( setupId ),
-				distortionTransform(),
-				imageToCamera( setupId ));
+				CameraModel.cameraToImage( setupId ),
+				OpticalModel.distortionTransform(false),
+				CameraModel.imageToCamera( setupId ));
 	}
 
 	public static InvertibleRealTransformSequence concatenate( InvertibleRealTransform... transforms) {

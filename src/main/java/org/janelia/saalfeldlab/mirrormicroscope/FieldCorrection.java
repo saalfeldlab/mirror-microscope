@@ -16,22 +16,15 @@ import com.google.gson.JsonElement;
 import bdv.util.BdvFunctions;
 import bdv.util.BdvOptions;
 import bdv.util.BdvStackSource;
-import net.imglib2.Interval;
 import net.imglib2.RandomAccessibleInterval;
-import net.imglib2.RealPoint;
 import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
-import net.imglib2.iterator.IntervalIterator;
 import net.imglib2.realtransform.InvertibleRealTransform;
 import net.imglib2.realtransform.InvertibleRealTransformSequence;
 import net.imglib2.realtransform.Translation3D;
 import net.imglib2.realtransform.RealViews;
-import net.imglib2.realtransform.Scale3D;
-import net.imglib2.realtransform.ScaleAndTranslation;
-import net.imglib2.realtransform.distortion.SphericalCurvatureZDistortion;
 import net.imglib2.type.NativeType;
 import net.imglib2.type.numeric.NumericType;
-import net.imglib2.util.Intervals;
 import net.imglib2.view.Views;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -90,20 +83,6 @@ public class FieldCorrection implements Runnable
 	long ny;
 	long nz;
 
-	// pixel to physical resolution (after magnification)
-	final double rx = 0.157; 	// um / pix 
-	final double ry = 0.157;	// um / pix
-	final double rz = 1.0;		// um / pix
-
-	// camera to image scaling factors
-	double pixSpacingX;
-	double pixSpacingY;
-	double pixSpacingZ;
-
-	double wx; 	// um
-	double wy; 	// um
-	double wz; 	// um
-
 	public static void main( String[] args )
 	{
 		int exitCode = new CommandLine( new FieldCorrection() ).execute( args );
@@ -146,13 +125,6 @@ public class FieldCorrection implements Runnable
 		ny = img.dimension( 1 );
 		nz = img.dimension( 2 );
 
-		wx = nx * rx;
-		wy = ny * ry;
-		wz = nz * rz;
-
-		pixSpacingX = rx / m0;
-		pixSpacingY = ry / m0;
-		pixSpacingZ = rz;
 
 		return img;
 	}
@@ -189,15 +161,15 @@ public class FieldCorrection implements Runnable
 	public < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > runCorrection( RandomAccessibleInterval< T > rawImg)
 	{
         System.out.println( "  setupId     : " + setupId);
-		System.out.println( "  tlation (um): " + Arrays.toString(CameraUtils.offset(setupId)));
+		System.out.println( "  tlation (um): " + Arrays.toString(CameraModel.position(setupId)));
 
 		final InvertibleRealTransformSequence totalDistortion = totalDistortionCorrectionTransform( setupId );
-		final double[] minMax = computeMinMaxOffsets( totalDistortion, rawImg );
+		final double[] minMax = Normalization.minMaxOffsetsCorners( totalDistortion, rawImg );
 		System.out.println( "  min offset: " + minMax[ 0 ] );
 		System.out.println( "  max offset: " + minMax[ 1 ] );
 
 		addNormalizationOffset(totalDistortion, minMax);
-		final double[] minMaxAfter = computeMinMaxOffsets( totalDistortion, rawImg );
+		final double[] minMaxAfter = Normalization.minMaxOffsetsCorners( totalDistortion, rawImg );
 		System.out.println( "  min offset: " + minMaxAfter[ 0 ] );
 		System.out.println( "  max offset: " + minMaxAfter[ 1 ] );
 
@@ -226,46 +198,6 @@ public class FieldCorrection implements Runnable
 	}
 
 	/**
-	 * Pixel to physical coordinates
-	 * 
-	 * @return the camera transform
-	 */
-	public ScaleAndTranslation cameraToImage(int cameraId)
-	{
-		return new ScaleAndTranslation(
-				new double[] {rx, ry, rz},
-				CameraUtils.offset(setupId));
-	}
-
-	public ScaleAndTranslation imageToCamera(int cameraId)
-	{
-		return cameraToImage(cameraId).inverse();
-	}
-
-	public Scale3D imageToObject()
-	{
-		return new Scale3D( m0, m0, 1 );
-	}
-
-	public Scale3D objectToImage()
-	{
-		return imageToObject().inverse();
-	}
-	
-	public Scale3D identity()
-	{
-		return new Scale3D( 1, 1, 1 );
-	}
-	
-	public InvertibleRealTransform distortionTransform() {
-
-		if ( inverse )
-			return new SphericalCurvatureZDistortion( 3, 2, R );
-		else
-			return new SphericalCurvatureZDistortion( 3, 2, R ).inverse();
-	}
-	
-	/**
 	 * Returns a transformation that corrects distortion.
 	 * <p>.
 	 * The distortion transformation is modeled in physical-image space, and
@@ -273,16 +205,15 @@ public class FieldCorrection implements Runnable
 	 * the camera image to physical image space, applies the inverse of
 	 * the distortion, and goes back to camera space.
 	 * 
-	 * 
 	 * (cam distorted) -> (img distorted) -> (img undistorted) -> (cam undistorted)
 	 * 
 	 * @return
 	 */
 	public InvertibleRealTransformSequence totalDistortionCorrectionTransform(int setupId) {
 		return concatenate( 
-				cameraToImage( setupId ),
-				distortionTransform(),
-				imageToCamera( setupId ));
+				CameraModel.cameraToImage( setupId ),
+				OpticalModel.distortionTransform(inverse),
+				CameraModel.imageToCamera( setupId ));
 	}
 
 	public static InvertibleRealTransformSequence concatenate( InvertibleRealTransform... transforms) {
@@ -292,51 +223,6 @@ public class FieldCorrection implements Runnable
 			renderingTransform.add(t);
 
 		return renderingTransform;
-	}
-
-	public static double[] computeMinMaxOffsets(InvertibleRealTransform distortion, Interval interval) {
-
-	    // Ensure we have at least 3 dimensions
-	    if (interval.numDimensions() < 3)
-	        throw new IllegalArgumentException("Interval must have at least 3 dimensions for z-translation computation");
-
-	    double minZTranslation = Double.POSITIVE_INFINITY;
-	    double maxZTranslation = Double.NEGATIVE_INFINITY;
-
-		// only need to check corners
-		IntervalIterator iterator = new IntervalIterator( Intervals.createMinMax( 0, 0, 0, 1, 1, 1 ) );
-		RealPoint cornerPoint = new RealPoint( interval.numDimensions() );
-		RealPoint transformedPoint = new RealPoint( interval.numDimensions() );
-
-		while ( iterator.hasNext() )
-		{
-			iterator.fwd();
-			corner(interval, iterator, cornerPoint);
-
-			// Apply distortion transformation
-			distortion.apply( cornerPoint, transformedPoint );
-
-			// Calculate z-translation (difference in z-coordinate)
-			double zTranslation = transformedPoint.getDoublePosition( 2 ) - cornerPoint.getDoublePosition( 2 );
-
-		    // Update min/max
-	        minZTranslation = Math.min(minZTranslation, zTranslation);
-	        maxZTranslation = Math.max(maxZTranslation, zTranslation);
-		}
-
-	    return new double[]{minZTranslation, maxZTranslation};
-	}
-
-	private static void corner(Interval interval, IntervalIterator cornerIterator, RealPoint p) {
-
-		int nd = interval.numDimensions();
-		for ( int i = 0; i < nd; i++ )
-		{
-			if ( cornerIterator.getLongPosition( i ) > 0 )
-				p.setPosition( interval.max( i ), i );
-			else
-				p.setPosition( interval.min( i ), i );
-		}
 	}
 
 	private static JsonElement buildNgffMeta() {

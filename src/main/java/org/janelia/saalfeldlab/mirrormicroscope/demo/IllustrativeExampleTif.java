@@ -3,8 +3,7 @@ package org.janelia.saalfeldlab.mirrormicroscope.demo;
 import java.util.Arrays;
 import java.util.HashMap;
 
-import org.janelia.saalfeldlab.mirrormicroscope.CameraUtils;
-import org.janelia.saalfeldlab.mirrormicroscope.CameraUtils.CAM_DIRECTION;
+import org.janelia.saalfeldlab.mirrormicroscope.CameraModel;
 
 import bdv.util.BdvFunctions;
 import bdv.util.BdvOptions;
@@ -14,6 +13,7 @@ import net.imglib2.FinalInterval;
 import net.imglib2.Interval;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.RealPoint;
+import net.imglib2.RealRandomAccessible;
 import net.imglib2.img.Img;
 import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
@@ -21,6 +21,7 @@ import net.imglib2.iterator.IntervalIterator;
 import net.imglib2.realtransform.InvertibleRealTransform;
 import net.imglib2.realtransform.InvertibleRealTransformSequence;
 import net.imglib2.realtransform.RealViews;
+import net.imglib2.realtransform.Scale3D;
 import net.imglib2.realtransform.ScaleAndTranslation;
 import net.imglib2.realtransform.Translation3D;
 import net.imglib2.realtransform.distortion.SphericalCurvatureZDistortion;
@@ -37,39 +38,42 @@ public class IllustrativeExampleTif {
 	final double rz = 8.0;		// um / pix
 
 	private final double R 	= 47.14 * 1000; // um
-
-	HashMap<Integer, double[]> cameraTranslationsMicronUnits;
+	
+	private final boolean inverse;
 
 	public static void main(String[] args) {
 		new IllustrativeExampleTif(true).run();
 	}
 
-	public IllustrativeExampleTif( boolean inverse) {
-		cameraTranslationsMicronUnits = new HashMap<>();
-		loadCameraTranslations();
-		CameraUtils.camDirection = CAM_DIRECTION.Y;
+	public IllustrativeExampleTif(boolean inverse) {
+
+		this.inverse = inverse;
 	}
 
 	public <T extends NumericType<T> & NativeType<T>> void run() {
 
-		final String setupPattern = "/nrs/saalfeld/john/for/keller/danio_1_488/dataset-orig-tifs/4/setup%d.tif";
-
-		Img<T> camImg01 = ImageJFunctions.wrap( IJ.openImage(String.format(setupPattern, 392)));
-		Img<T> camImg10 = ImageJFunctions.wrap( IJ.openImage(String.format(setupPattern, 402)));
+//		final String setupPattern = "/nrs/saalfeld/john/for/keller/danio_1_488/dataset-orig-tifs/4/setup%d.tif";
+		final String setupPattern = "/home/john/for/keller/danio_1_488/dataset-original-tifs/4/setup%d.tif";
 
 		BdvOptions opts = BdvOptions.options().numRenderingThreads(32);
-		final BdvStackSource<?> bdv = BdvFunctions.show(camImg01, "original 392", opts);
+
+		Img<T> camImg01 = ImageJFunctions.wrap( IJ.openImage(String.format(setupPattern, 392)));
+		BdvStackSource<?> bdv = BdvFunctions.show(transformReal(camImg01, cameraToPhysical()), camImg01, "original 392", opts);
+		bdv.setDisplayRange(185, 1200);
 		opts = opts.addTo(bdv);
 
 		final boolean norm = false;
 
 		final InvertibleRealTransformSequence fwdTform392 = genTransform(392, false, camImg01, norm);
-		BdvFunctions.show(transform(camImg01, fwdTform392) , "fwd-transformed 392", opts);
-
+		bdv = BdvFunctions.show(transformReal(camImg01, fwdTform392), camImg01, "fwd-transformed 392", opts);
+		bdv.setDisplayRange(185, 1200);
+//
 		final InvertibleRealTransformSequence invTform392 = genTransform(392, true, camImg01, norm);
-		BdvFunctions.show(transform(camImg01, invTform392) , "inv-transformed 392", opts);
+		bdv = BdvFunctions.show(transformReal(camImg01, invTform392), camImg01, "inv-transformed 392", opts);
+		bdv.setDisplayRange(185, 1200);
 
-		BdvFunctions.show(camImg10, "original 402", opts);
+		Img<T> camImg10 = ImageJFunctions.wrap( IJ.openImage(String.format(setupPattern, 402)));
+		BdvFunctions.show(transformReal(camImg10, cameraToPhysical()), camImg10, "original 402", opts);
 		final InvertibleRealTransformSequence fwdTform402 = genTransform(402, false, camImg10, norm);
 		BdvFunctions.show(transform(camImg10, fwdTform402) , "fwd-transformed 402", opts);
 
@@ -77,24 +81,57 @@ public class IllustrativeExampleTif {
 		BdvFunctions.show(transform(camImg10, invTform402) , "inv-transformed 402", opts);
 
 
-//		compareFwdInv();
+//		RealPoint p = new RealPoint(128, 70, 256);
+//		compareFwdInv(p, fwdTform392, invTform392);
+//
+//		InvertibleRealTransformSequence identity = new InvertibleRealTransformSequence();
+//		identity.add(new Scale3D(1,1,1));
+//
+//		RealRandomAccessible<T> raw = transformReal(camImg01, identity);
+//		RealRandomAccessible<T> fwd = transformReal(camImg01, fwdTform392);
+//		RealRandomAccessible<T> inv = transformReal(camImg01, invTform392);
+//		
+//
+//		System.out.println(raw.getAt(p));
+//		System.out.println(fwd.getAt(p));
+//		System.out.println(inv.getAt(p));
+
+//		save(transformReal(camImg01, fwdTform392), camImg01, "fwd");
+//		save(transformReal(camImg01, invTform392), camImg01, "inv");
 
 		System.out.println("run done");
 	}
-	
-	private void compareFwdInv( ) {
 
-//		RealPoint p = new RealPoint(3);
-//		RealPoint q = new RealPoint(3);
-		
-//		System.out.println("");
-//		fwdTform392.apply(p, q);
-//		System.out.println(q);
-//
-//		invTform392.apply(p, q);
-//		System.out.println(q);
-//		System.out.println("");
-		
+	public void save(RealRandomAccessible img, Interval interval, String name) {
+
+		save(img.realView().raster().view().interval(interval), name);
+	}
+	
+	public void save( RandomAccessibleInterval img, String name ) { 
+		IJ.save( ImageJFunctions.wrap(img, name), 
+				"/home/john/for/keller/danio_1_488/tmp/"+name+".tif");
+	}
+
+	private void compareFwdInv( RealPoint p, InvertibleRealTransformSequence fwd, InvertibleRealTransformSequence inv ) {
+
+		RealPoint q = new RealPoint(3);
+
+		System.out.println("");
+		fwd.apply(p, q);
+		System.out.println(q);
+
+		inv.apply(p, q);
+		System.out.println(q);
+		System.out.println("");
+	}
+
+	private void compareFwdInv( Interval itvl, InvertibleRealTransformSequence fwd, InvertibleRealTransformSequence inv ) {
+
+		RealPoint p = new RealPoint(3);
+		for(int i = 0; i < itvl.numDimensions(); i++)
+			p.setPosition( (itvl.realMax(i) - itvl.realMin(i)) / 2.0, i);
+
+		compareFwdInv(p, fwd, inv);
 	}
 
 	public InvertibleRealTransformSequence genTransform(int setupId, boolean inverse, Interval itvl ) {
@@ -107,28 +144,40 @@ public class IllustrativeExampleTif {
 
 //		final double[] minMax = computeMinMaxOffsets(tform, itvl);
 //		final double[] minMax = computeOriginOffsets(tform, itvl);
-		final double[] minMax = computeMiddleOffsets(tform, itvl);
-		System.out.println("  min offset: " + minMax[0]);
-		System.out.println("  max offset: " + minMax[1]);
+//		final double[] minMax = computeMiddleOffsets(tform, itvl);
+//		System.out.println("  min offset: " + minMax[0]);
+//		System.out.println("  max offset: " + minMax[1]);
 
-		if (normalize) {
-			addNormalizationOffset(tform, minMax);
-//			final double[] minMaxAfter = computeMinMaxOffsets(tform, itvl);
-//			final double[] minMaxAfter = computeOriginOffsets(tform, itvl);
-			final double[] minMaxAfter = computeMiddleOffsets(tform, itvl);
-			System.out.println("  min offset: " + minMaxAfter[0]);
-			System.out.println("  max offset: " + minMaxAfter[1]);
-		}
+//		if (normalize) {
+//			addNormalizationOffset(tform, minMax);
+////			final double[] minMaxAfter = computeMinMaxOffsets(tform, itvl);
+////			final double[] minMaxAfter = computeOriginOffsets(tform, itvl);
+//			final double[] minMaxAfter = computeMiddleOffsets(tform, itvl);
+//			System.out.println("  min offset: " + minMaxAfter[0]);
+//			System.out.println("  max offset: " + minMaxAfter[1]);
+//		}
 		tform.add(imageToCamera(setupId));
+		tform.add(cameraToPhysical());
 
 		return tform;
+	}
+	
+	public <T extends NumericType<T> & NativeType<T>> RealRandomAccessible<T> transformReal(
+			final RandomAccessibleInterval<T> img,
+			final InvertibleRealTransform tform ) {
+
+//		Interval bbox = boundingBox(tform, img);
+//		System.out.println(Intervals.toString(bbox));
+
+		return RealViews.transform( 
+				Views.interpolate( Views.extendZero(img), new NLinearInterpolatorFactory<>()),
+				tform);
 	}
 
 	public <T extends NumericType<T> & NativeType<T>> RandomAccessibleInterval<T> transform(
 			final RandomAccessibleInterval<T> img,
-			final InvertibleRealTransformSequence tform ) {
+			final InvertibleRealTransform tform ) {
 
-		
 //		Interval bbox = boundingBox(tform, img);
 //		if (Arrays.stream(bbox.minAsDoubleArray()).anyMatch(x -> x < 0)) {
 //			final double[] t = Arrays.stream(bbox.minAsDoubleArray()).map(x -> -x).toArray();
@@ -150,7 +199,7 @@ public class IllustrativeExampleTif {
 				tform)),
 			bbox);
 	}
-	
+
 	public static Interval boundingBox(final InvertibleRealTransform tform, final Interval interval ) {
 
 	    // Ensure we have at least 3 dimensions
@@ -190,6 +239,7 @@ public class IllustrativeExampleTif {
 
 //			System.out.println("min : " + Arrays.toString(min) );
 //			System.out.println("max : " + Arrays.toString(max) );
+
 	    return new FinalInterval(min, max);
 	}
 
@@ -200,110 +250,7 @@ public class IllustrativeExampleTif {
         final double d = (min + max) / 2.0;
 		totalDistortion.add( new Translation3D(new double[] {0, 0, -d}) );
 	}
-	
-	public static double[] computeOriginOffsets(InvertibleRealTransform distortion, Interval interval) {
 
-	    // Ensure we have at least 3 dimensions
-	    if (interval.numDimensions() < 3)
-	        throw new IllegalArgumentException("Interval must have at least 3 dimensions for z-translation computation");
-
-		RealPoint origin = new RealPoint( interval.numDimensions() );
-		RealPoint transformedPoint = new RealPoint( interval.numDimensions() );
-
-		// Apply distortion transformation
-		distortion.apply( origin, transformedPoint );
-
-		// Calculate z-translation (difference in z-coordinate)
-		double zTranslation = transformedPoint.getDoublePosition( 2 ) - origin.getDoublePosition( 2 );
-
-	    return new double[]{zTranslation, zTranslation};
-	}
-	
-	public static double[] computeMiddleOffsets(InvertibleRealTransform distortion, Interval interval) {
-
-	    // Ensure we have at least 3 dimensions
-	    if (interval.numDimensions() < 3)
-	        throw new IllegalArgumentException("Interval must have at least 3 dimensions for z-translation computation");
-
-		RealPoint middle = new RealPoint(interval.numDimensions());
-		for (int i = 0; i < interval.numDimensions(); i++)
-			middle.setPosition((interval.realMax(i) - interval.realMin(i)) / 2.0, i);
-
-		RealPoint transformedPoint = new RealPoint( interval.numDimensions() );
-
-		// Apply distortion transformation
-		distortion.apply( middle, transformedPoint );
-
-		// Calculate z-translation (difference in z-coordinate)
-		double zTranslation = transformedPoint.getDoublePosition( 2 ) - middle.getDoublePosition( 2 );
-
-	    return new double[]{zTranslation, zTranslation};
-	}
-	
-	public static double[] computeMinMaxOffsetsCorners(InvertibleRealTransform distortion, Interval interval) {
-
-	    // Ensure we have at least 3 dimensions
-	    if (interval.numDimensions() < 3)
-	        throw new IllegalArgumentException("Interval must have at least 3 dimensions for z-translation computation");
-
-	    double minZTranslation = Double.POSITIVE_INFINITY;
-	    double maxZTranslation = Double.NEGATIVE_INFINITY;
-
-		// only need to check corners
-		IntervalIterator iterator = new IntervalIterator( Intervals.createMinMax( 0, 0, 0, 1, 1, 1 ) );
-		RealPoint cornerPoint = new RealPoint( interval.numDimensions() );
-		RealPoint transformedPoint = new RealPoint( interval.numDimensions() );
-
-		while ( iterator.hasNext() )
-		{
-			iterator.fwd();
-			corner(interval, iterator, cornerPoint);
-
-			// Apply distortion transformation
-			distortion.apply( cornerPoint, transformedPoint );
-
-			// Calculate z-translation (difference in z-coordinate)
-			double zTranslation = transformedPoint.getDoublePosition( 2 ) - cornerPoint.getDoublePosition( 2 );
-
-		    // Update min/max
-	        minZTranslation = Math.min(minZTranslation, zTranslation);
-	        maxZTranslation = Math.max(maxZTranslation, zTranslation);
-		}
-
-	    return new double[]{minZTranslation, maxZTranslation};
-	}
-
-	public static double[] computeMinMaxOffsets(InvertibleRealTransform distortion, Interval interval) {
-
-	    // Ensure we have at least 3 dimensions
-	    if (interval.numDimensions() < 3)
-	        throw new IllegalArgumentException("Interval must have at least 3 dimensions for z-translation computation");
-
-	    double minZTranslation = Double.POSITIVE_INFINITY;
-	    double maxZTranslation = Double.NEGATIVE_INFINITY;
-
-		// only need to check corners
-		IntervalIterator iterator = new IntervalIterator( interval );
-		RealPoint transformedPoint = new RealPoint( interval.numDimensions() );
-
-		while ( iterator.hasNext() )
-		{
-			iterator.fwd();
-
-			// Apply distortion transformation
-			distortion.apply( iterator, transformedPoint );
-
-			// Calculate z-translation (difference in z-coordinate)
-			double zTranslation = transformedPoint.getDoublePosition( 2 ) - iterator.getDoublePosition( 2 );
-
-		    // Update min/max
-	        minZTranslation = Math.min(minZTranslation, zTranslation);
-	        maxZTranslation = Math.max(maxZTranslation, zTranslation);
-		}
-
-	    return new double[]{minZTranslation, maxZTranslation};
-	}
-	
 	/**
 	 * Returns a transformation that corrects distortion.
 	 * <p>.
@@ -346,9 +293,9 @@ public class IllustrativeExampleTif {
 	public InvertibleRealTransform distortionTransform(boolean inverse) {
 
 		if ( inverse )
-			return new SphericalCurvatureZDistortion( 3, 2, R );
-		else
 			return new SphericalCurvatureZDistortion( 3, 2, R ).inverse();
+		else
+			return new SphericalCurvatureZDistortion( 3, 2, R );
 	}
 	
 	public static InvertibleRealTransformSequence concatenate( InvertibleRealTransform... transforms) {
@@ -369,7 +316,7 @@ public class IllustrativeExampleTif {
 	{
 		return new ScaleAndTranslation(
 				new double[] {rx, ry, rz},
-				cameraTranslationsMicronUnits.get(cameraId));
+				CameraModel.position(cameraId));
 	}
 
 	public ScaleAndTranslation imageToCamera(int cameraId)
@@ -377,14 +324,12 @@ public class IllustrativeExampleTif {
 		return cameraToImage(cameraId).inverse();
 	}
 
-	public void loadCameraTranslations() {
-
-		cameraTranslationsMicronUnits = new HashMap<>();
-		for ( int setupId = 0; setupId < 600; setupId++ )
-			cameraTranslationsMicronUnits.put( setupId, CameraUtils.offset(setupId) );
+	public Scale3D cameraToPhysical()
+	{
+		return new Scale3D(rx, ry, rz);
 	}
 	
-	private static void corner(Interval interval, IntervalIterator cornerIterator, RealPoint p) {
+	public static void corner(Interval interval, IntervalIterator cornerIterator, RealPoint p) {
 
 		int nd = interval.numDimensions();
 		for ( int i = 0; i < nd; i++ )
@@ -395,6 +340,8 @@ public class IllustrativeExampleTif {
 				p.setPosition( interval.min( i ), i );
 		}
 	}
+
+
 
 
 }
