@@ -6,44 +6,81 @@ import net.imglib2.realtransform.ScaleAndTranslation;
 
 public class CameraModel {
 
-	public static final double RX = 0.157;
-	public static final double RY = 0.157;
-	public static final double RZ = 1.0;
+	private static final int[] ALL_CAMERAS = new int[] {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+
+	public static final double BASE_RX = 0.157;
+	public static final double BASE_RY = 0.157;
+	public static final double BASE_RZ = 1.0;
 
 	public static final int SIZE_X_PIX = 4096;
 	public static final int SIZE_Y_PIX = 2560;
-	public static final int SIZE_Z_PIX = 4101;
 
-	public static final int ROWS_PER_CAM = 4;
-	public static final int NUM_CAMS = 10;
+	public static final int TOTAL_NUM_CAMERAS = 10;
+
 	public static final double WIDTH_NO_OVERLAP_UM = 328;
 	public static final double WIDTH_UM = 402;
 
-	public static final double CAMERA_FOV = ROWS_PER_CAM * WIDTH_NO_OVERLAP_UM;
-	public static final double TOTAL_FOV = (NUM_CAMS - 1) * CAMERA_FOV + WIDTH_UM;
+	public final double CAMERA_FOV;
+	public final double TOTAL_FOV;
 
-	public static final double[] varyingPositionsPhysical = DoubleStream
-			.iterate(
-					(TOTAL_FOV / 2),
-					x -> x - CAMERA_FOV)
-			.limit(NUM_CAMS)
-			.toArray();
+	public final double[] xPositionsPhysical;
+	public final double[] yPositionsPhysical;
 
-	public static final double[] constantPositionsPhysical = DoubleStream
-			.generate(() -> (-SIZE_X_PIX / 2) * RX)
-			.limit(NUM_CAMS)
-			.toArray();
+	private final int cameraRepeatsPerRow;
+	private final int numVirtualCameraStack;
 
-	public static double[] position(final int setupId) {
+	private int[] activeCameras;
 
-		int row = setupId / 10;
-		int camera = (row / 4) % 10;
+	public final double rx;
+	public final double ry;
+	public final double rz;
 
-		return new double[]{
-				constantPositionsPhysical[camera],
-				varyingPositionsPhysical[camera],
-				0
-		};
+	public CameraModel(final int numVirtualCameraStack,
+			final int cameraRepeatsPerRow,
+			final double[] res, 
+			final int[] activeCameras) {
+
+		this.cameraRepeatsPerRow = cameraRepeatsPerRow;
+		this.numVirtualCameraStack = numVirtualCameraStack;
+
+		rx = res[0];
+		ry = res[1];
+		rz = res[2];
+
+		CAMERA_FOV = cameraRepeatsPerRow * WIDTH_NO_OVERLAP_UM;
+		TOTAL_FOV = (TOTAL_NUM_CAMERAS - 1) * CAMERA_FOV + WIDTH_UM;
+
+		// fixed positions of cameras
+		xPositionsPhysical = DoubleStream
+				.generate(() -> (-SIZE_X_PIX / 2) * rx)
+				.limit(TOTAL_NUM_CAMERAS)
+				.toArray();
+
+		yPositionsPhysical = DoubleStream
+				.iterate(
+						(TOTAL_FOV / 2),
+						x -> x - CAMERA_FOV)
+				.limit(TOTAL_NUM_CAMERAS)
+				.toArray();	
+	}
+
+	public CameraModel(final int cameraRepeatsPerRow, final int[] activeCameras) {
+		this(4, cameraRepeatsPerRow, new double[]{BASE_RX, BASE_RY, BASE_RZ}, activeCameras);
+	}
+
+	public CameraModel(final int cameraRepeatsPerRow, final double[] res) {
+		this(4, cameraRepeatsPerRow, res, ALL_CAMERAS);
+	}
+
+	public CameraModel(final int cameraRepeatsPerRow) {
+		this(4, cameraRepeatsPerRow, new double[]{BASE_RX, BASE_RY, BASE_RZ}, ALL_CAMERAS);
+	}
+
+	public int setupToCamera( final int setupId ) {
+		final int row = setupId / cameraRepeatsPerRow;
+		final int cameraIndex = (row / numVirtualCameraStack) % cameraRepeatsPerRow;
+		final int cameraId = activeCameras[cameraIndex];
+		return cameraId;
 	}
 
 	/**
@@ -51,14 +88,18 @@ public class CameraModel {
 	 * 
 	 * @return the camera transform
 	 */
-	public static ScaleAndTranslation cameraToImage(int cameraId) {
+	public ScaleAndTranslation cameraToImage(int cameraId) {
 		return new ScaleAndTranslation(
-				new double[]{RX, RY, RZ},
-				CameraModel.position(cameraId));
+				new double[]{rx, ry, rz},
+				position(cameraId));
 	}
 
-	public static ScaleAndTranslation imageToCamera(int cameraId) {
+	public ScaleAndTranslation imageToCamera(int cameraId) {
 		return cameraToImage(cameraId).inverse();
+	}
+
+	public double[] position(final int cameraId) {
+		return new double[]{ xPositionsPhysical[cameraId], yPositionsPhysical[cameraId], 0 };
 	}
 
 }

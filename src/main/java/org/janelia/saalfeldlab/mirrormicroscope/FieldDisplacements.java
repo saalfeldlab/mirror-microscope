@@ -1,7 +1,6 @@
 package org.janelia.saalfeldlab.mirrormicroscope;
 
 import java.util.Arrays;
-import java.util.HashMap;
 
 import bdv.util.BdvFunctions;
 import bdv.util.BdvOptions;
@@ -19,11 +18,6 @@ import net.imglib2.position.FunctionRandomAccessible;
 import net.imglib2.realtransform.InvertibleRealTransform;
 import net.imglib2.realtransform.InvertibleRealTransformSequence;
 import net.imglib2.realtransform.Translation3D;
-import net.imglib2.realtransform.Scale3D;
-import net.imglib2.realtransform.ScaleAndTranslation;
-import net.imglib2.realtransform.distortion.SphericalCurvatureZDistortion;
-import net.imglib2.type.NativeType;
-import net.imglib2.type.numeric.NumericType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.util.Intervals;
 import net.imglib2.view.fluent.RandomAccessibleIntervalView;
@@ -36,29 +30,19 @@ import picocli.CommandLine.Option;
 	mixinStandardHelpOptions = true,
 	version = "0.1", 
 	description = "Optical field correction for mirror microscope.")
-public class FieldDisplacements implements Runnable
-{
+public class FieldDisplacements implements Runnable {
 
 	@Option( names = { "-s", "--setup-id" }, description = "Setup ID number", required = true )
 	private int setupId;
+
+	@Option( names = { "--num-columns" }, description = "Number of columns per camera", required = true )
+	private int columnsPerCamera;
 
 	@Option(names = {"-o", "--output-base"}, description = "Base output file. Will append <-(setup-id).tif>", required = false)
 	private String outputBase;
 
 	@Option( names = { "-i", "--inverse" }, fallbackValue = "true", arity = "0..1", description = "Flag to invert distortion transformation.", required = false )
 	private boolean inverse = false;
-
-//	@Option( names = { "-v", "--view" }, fallbackValue = "true", arity = "0..1", description = "Flag to view the transformed result.", required = false )
-//	private boolean view = false;
-//
-//	@Option( names = { "-j", "--num-jobs" }, description = "Number of threads", required = false )
-//	private int nThreads=1;
-
-//	private N5Reader n5r;
-//	private N5Writer n5w;
-//
-//	private DatasetAttributes inputAttributes;
-//	private String inputDatasetPath;
 
 	/*
 	 *  camera / imaging parameters
@@ -67,6 +51,8 @@ public class FieldDisplacements implements Runnable
 	long nx;
 	long ny;
 	long nz;
+
+	CameraModel cameraModel;
 
 	// pixel to physical resolution (after magnification)
 	final double rxBase = 0.157; 	// um / pix 
@@ -89,23 +75,24 @@ public class FieldDisplacements implements Runnable
 
 	public static void main( String[] args )
 	{
-		int exitCode = new CommandLine( new FieldDisplacements() ).execute( args );
+		int exitCode = new CommandLine(new FieldDisplacements()).execute(args);
+		System.exit(exitCode);
 	}
 
 	@Override
-	public void run()
-	{
+	public void run() {
+		cameraModel = new CameraModel(columnsPerCamera, new double[]{rx, ry, rz});
 		process();
 	}
 
-	private < T extends NumericType< T > & NativeType< T > > void process()
+	private void process()
 	{
 		System.out.println( "Processing application with:" );
 		System.out.println( "  - Setup ID: " + setupId );
 		System.out.println( "  - inverse: " + inverse );
 
 		final Interval interval = Intervals.createMinMax(0, 0, 0, 4096 / factor, 2650 / factor, 4101 / factor);
-		RandomAccessibleInterval< T > displacements = displacements(interval);
+		RandomAccessibleInterval< DoubleType > displacements = displacements(interval);
 
 		if( outputBase != null ) {
 			IJ.save(ImageJFunctions.wrap(displacements, "img-setup-"+setupId), outputBase + "-" + setupId + ".tif" );
@@ -116,11 +103,11 @@ public class FieldDisplacements implements Runnable
 		}
 	}
 
-	@SuppressWarnings("unchecked")
-	public < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > displacements( final Interval interval )
+	public RandomAccessibleInterval< DoubleType > displacements( final Interval interval )
 	{
         System.out.println( "  setupId     : " + setupId);
-		System.out.println( "  tlation (um): " + Arrays.toString(CameraModel.position(setupId)));
+		System.out.println( "  camera id   : " + cameraModel.setupToCamera(setupId));
+		System.out.println( "  tlation (um): " + Arrays.toString(cameraModel.position(setupId)));
 
 		final InvertibleRealTransformSequence totalDistortion = totalDistortionCorrectionTransform( setupId );
 		final double[] minMax = computeMinMaxOffsets( totalDistortion, interval );
@@ -146,7 +133,7 @@ public class FieldDisplacements implements Runnable
 		LoopBuilder.setImages(zDispFun, zDisplacements).forEachPixel( (src,dst) -> {
 			dst.set(src.get());
 		});
-		return (RandomAccessibleInterval<T>)zDisplacements;
+		return zDisplacements;
 	}
 
 	private void addNormalizationOffset( InvertibleRealTransformSequence totalDistortion, double[] minMax ) {
@@ -172,9 +159,9 @@ public class FieldDisplacements implements Runnable
 	 */
 	public InvertibleRealTransformSequence totalDistortionCorrectionTransform(int setupId) {
 		return concatenate( 
-				CameraModel.cameraToImage( setupId ),
+				cameraModel.cameraToImage( setupId ),
 				OpticalModel.distortionTransform(false),
-				CameraModel.imageToCamera( setupId ));
+				cameraModel.imageToCamera( setupId ));
 	}
 
 	public static InvertibleRealTransformSequence concatenate( InvertibleRealTransform... transforms) {
