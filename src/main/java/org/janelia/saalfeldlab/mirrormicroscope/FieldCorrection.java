@@ -44,6 +44,9 @@ public class FieldCorrection implements Runnable
 	@Option( names = { "-s", "--setup-id" }, description = "Setup ID number", required = true )
 	private int setupId;
 
+	@Option( names = { "--num-columns" }, description = "Number of columns per camera", required = true )
+	private int columnsPerCamera;
+
 	@Option( names = { "-o", "--output-root" }, description = "Output n5 root", required = false )
 	private String outputRoot;
 	
@@ -54,13 +57,13 @@ public class FieldCorrection implements Runnable
 	private String datasetOutputPattern = "setup%d";
 
 	@Option( names = { "-i", "--inverse" }, fallbackValue = "true", arity = "0..1", description = "Flag to invert distortion transformation.", required = false )
-	private boolean inverse = false;
+	private boolean inverse = true;
 
 	@Option( names = { "-v", "--view" }, fallbackValue = "true", arity = "0..1", description = "Flag to view the transformed result.", required = false )
 	private boolean view = false;
 
 	@Option( names = { "-j", "--num-jobs" }, description = "Number of threads", required = false )
-	private int nThreads=1;
+	private int nThreads = 1;
 
 	private N5Reader n5r;
 	private N5Writer n5w;
@@ -68,12 +71,7 @@ public class FieldCorrection implements Runnable
 	private DatasetAttributes inputAttributes;
 	private String inputDatasetPath;
 
-	/*
-	 * Optical system parameters
-	 */
-	private final double m0 = 0.02891;		// nominal magnification (image to object)
-	private final double m1 = 8.318e-9;		// magnification distortion
-	private final double R 	= 47.14 * 1000; // um
+	private CameraModel cameraModel;
 
 	/*
 	 *  camera / imaging parameters
@@ -83,54 +81,52 @@ public class FieldCorrection implements Runnable
 	long ny;
 	long nz;
 
-	public static void main( String[] args )
-	{
-		int exitCode = new CommandLine( new FieldCorrection() ).execute( args );
-		System.exit( exitCode );
+	public static void main(String[] args) {
+		int exitCode = new CommandLine(new FieldCorrection()).execute(args);
+		System.exit(exitCode);
 	}
 
 	@Override
-	public void run()
-	{
+	public void run() {
+		cameraModel = new CameraModel(columnsPerCamera);
 		process();
 	}
 
-	private < T extends NumericType< T > & NativeType< T > > void process()
-	{
-		System.out.println( "Processing application with:" );
-		System.out.println( "  - Root directory: " + inputRoot );
-		System.out.println( "  - Setup ID: " + setupId );
-		System.out.println( "  - inverse: " + inverse );
-		
-		RandomAccessibleInterval< T > rawImg = read();
-		RandomAccessibleInterval< T > correctedImg = to5d(runCorrection(rawImg));
+	private <T extends NumericType<T> & NativeType<T>> void process() {
 
-		if ( outputRoot != null )
-			write( correctedImg );
-		else if( view ){
-			final BdvOptions opts = BdvOptions.options().numRenderingThreads( nThreads );
-			final BdvStackSource< T > bdv = BdvFunctions.show( rawImg, "raw", opts );
-			BdvFunctions.show( correctedImg, "corrected", opts.addTo( bdv ));
+		System.out.println("Processing application with:");
+		System.out.println("  - Root directory: " + inputRoot);
+		System.out.println("  - Setup ID: " + setupId);
+		System.out.println("  - inverse: " + inverse);
+
+		RandomAccessibleInterval<T> rawImg = read();
+		RandomAccessibleInterval<T> correctedImg = to5d(runCorrection(rawImg));
+
+		if (outputRoot != null)
+			write(correctedImg);
+		else if (view) {
+			final BdvOptions opts = BdvOptions.options().numRenderingThreads(nThreads);
+			final BdvStackSource<T> bdv = BdvFunctions.show(rawImg, "raw", opts);
+			BdvFunctions.show(correctedImg, "corrected", opts.addTo(bdv));
 		}
 	}
 
-	private < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > read() {
+	private <T extends NumericType<T> & NativeType<T>> RandomAccessibleInterval<T> read() {
 
 		n5r = new N5Factory().openReader(inputRoot);
-		inputDatasetPath = String.format( datasetPattern, setupId );
+		inputDatasetPath = String.format(datasetPattern, setupId);
 
-		inputAttributes	= n5r.getDatasetAttributes( inputDatasetPath );
-		final CachedCellImg< T, ? > img = N5Utils.open( n5r, inputDatasetPath );
-		nx = img.dimension( 0 );
-		ny = img.dimension( 1 );
-		nz = img.dimension( 2 );
-
+		inputAttributes = n5r.getDatasetAttributes(inputDatasetPath);
+		final CachedCellImg<T, ?> img = N5Utils.open(n5r, inputDatasetPath);
+		nx = img.dimension(0);
+		ny = img.dimension(1);
+		nz = img.dimension(2);
 
 		return img;
 	}
 
-	private < T extends NumericType< T > & NativeType< T > > void write( RandomAccessibleInterval< T > img )
-	{
+	private <T extends NumericType<T> & NativeType<T>> void write(RandomAccessibleInterval<T> img) {
+
 		n5w = new N5Factory()
 				.zarrDimensionSeparator("/")
 				.openWriter( outputRoot );
@@ -155,13 +151,18 @@ public class FieldCorrection implements Runnable
 			}
 
 		// set metadata
-		n5w.setAttribute(baseDset, "/", buildNgffMeta());
+		n5w.setAttribute(baseDset, "/", buildNgffMeta(cameraModel.rx, cameraModel.ry, cameraModel.rz));
+	}
+	
+	public CameraModel getCameraModel() {
+		return cameraModel;
 	}
 
-	public < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > runCorrection( RandomAccessibleInterval< T > rawImg)
-	{
+	public < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > runCorrection( RandomAccessibleInterval< T > rawImg) {
+
         System.out.println( "  setupId     : " + setupId);
-		System.out.println( "  tlation (um): " + Arrays.toString(CameraModel.position(setupId)));
+		System.out.println( "  camera id   : " + cameraModel.setupToCamera(setupId));
+		System.out.println( "  tlation (um): " + Arrays.toString(cameraModel.position(setupId)));
 
 		final InvertibleRealTransformSequence totalDistortion = totalDistortionCorrectionTransform( setupId );
 		final double[] minMax = Normalization.minMaxOffsetsCorners( totalDistortion, rawImg );
@@ -180,8 +181,7 @@ public class FieldCorrection implements Runnable
 			rawImg);
 	}
 
-	public <T extends NumericType<T> & NativeType<T>> RandomAccessibleInterval<T> to5d(RandomAccessibleInterval<T> img)
-	{
+	public <T extends NumericType<T> & NativeType<T>> RandomAccessibleInterval<T> to5d(RandomAccessibleInterval<T> img) {
 		return Views.addDimension(Views.addDimension(img, 0, 0), 0, 0);
 	}
 
@@ -211,9 +211,9 @@ public class FieldCorrection implements Runnable
 	 */
 	public InvertibleRealTransformSequence totalDistortionCorrectionTransform(int setupId) {
 		return concatenate( 
-				CameraModel.cameraToImage( setupId ),
+				cameraModel.cameraToImage( setupId ),
 				OpticalModel.distortionTransform(inverse),
-				CameraModel.imageToCamera( setupId ));
+				cameraModel.imageToCamera( setupId ));
 	}
 
 	public static InvertibleRealTransformSequence concatenate( InvertibleRealTransform... transforms) {
@@ -225,9 +225,9 @@ public class FieldCorrection implements Runnable
 		return renderingTransform;
 	}
 
-	private static JsonElement buildNgffMeta() {
+	private static JsonElement buildNgffMeta(double rx, double ry, double rz) {
 		Gson gson = new Gson();
-		String s = "{\n"
+		String s = String.format("{\n"
 				+ "  \"multiscales\": [\n"
 				+ "    {\n"
 				+ "      \"name\": \"\",\n"
@@ -244,7 +244,7 @@ public class FieldCorrection implements Runnable
 				+ "        {\n"
 				+ "          \"path\": \"0\",\n"
 				+ "          \"coordinateTransformations\": [\n"
-				+ "            { \"scale\": [ 1, 1, 1, 0.157, 0.157 ], \"type\": \"scale\" },\n"
+				+ "            { \"scale\": [ 1, 1, %f, %f, %f ], \"type\": \"scale\" },\n"
 				+ "            { \"translation\": [ 0, 0, 0, 0, 0 ], \"type\": \"translation\" }\n"
 				+ "          ]\n"
 				+ "        }\n"
@@ -252,7 +252,8 @@ public class FieldCorrection implements Runnable
 				+ "      \"coordinateTransformations\": []\n"
 				+ "    }\n"
 				+ "  ]\n"
-				+ "}\n";
+				+ "}\n",
+				rz, ry, rx);
 
 		return gson.fromJson(s, JsonElement.class);
 	}

@@ -40,6 +40,8 @@ public class IllustrativeExampleTif {
 	private final double R 	= 47.14 * 1000; // um
 	
 	private final boolean inverse;
+	
+	CameraModel cameraModel;
 
 	public static void main(String[] args) {
 		new IllustrativeExampleTif(true).run();
@@ -48,6 +50,7 @@ public class IllustrativeExampleTif {
 	public IllustrativeExampleTif(boolean inverse) {
 
 		this.inverse = inverse;
+		cameraModel = new CameraModel(10);
 	}
 
 	public <T extends NumericType<T> & NativeType<T>> void run() {
@@ -316,7 +319,7 @@ public class IllustrativeExampleTif {
 	{
 		return new ScaleAndTranslation(
 				new double[] {rx, ry, rz},
-				CameraModel.position(cameraId));
+				cameraModel.position(cameraId));
 	}
 
 	public ScaleAndTranslation imageToCamera(int cameraId)
