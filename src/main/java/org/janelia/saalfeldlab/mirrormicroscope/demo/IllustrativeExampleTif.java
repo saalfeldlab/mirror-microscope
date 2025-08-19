@@ -1,7 +1,6 @@
 package org.janelia.saalfeldlab.mirrormicroscope.demo;
 
 import java.util.Arrays;
-import java.util.HashMap;
 
 import org.janelia.saalfeldlab.mirrormicroscope.CameraModel;
 
@@ -46,14 +45,14 @@ public class IllustrativeExampleTif {
 	}
 
 	public IllustrativeExampleTif(boolean inverse) {
-
 		this.inverse = inverse;
 	}
 
+
 	public <T extends NumericType<T> & NativeType<T>> void run() {
 
-//		final String setupPattern = "/nrs/saalfeld/john/for/keller/danio_1_488/dataset-orig-tifs/4/setup%d.tif";
-		final String setupPattern = "/home/john/for/keller/danio_1_488/dataset-original-tifs/4/setup%d.tif";
+		final String setupPattern = "/nrs/saalfeld/john/for/keller/danio_1_488/dataset-orig-tifs/4/setup%d.tif";
+//		final String setupPattern = "/home/john/for/keller/danio_1_488/dataset-original-tifs/4/setup%d.tif";
 
 		BdvOptions opts = BdvOptions.options().numRenderingThreads(32);
 
