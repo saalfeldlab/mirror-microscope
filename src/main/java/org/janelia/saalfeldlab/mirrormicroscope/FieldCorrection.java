@@ -57,7 +57,7 @@ public class FieldCorrection implements Runnable
 	private String datasetOutputPattern = "setup%d";
 
 	@Option( names = { "-i", "--inverse" }, fallbackValue = "true", arity = "0..1", description = "Flag to invert distortion transformation.", required = false )
-	private boolean inverse = true;
+	private boolean inverse = false;
 
 	@Option( names = { "-v", "--view" }, fallbackValue = "true", arity = "0..1", description = "Flag to view the transformed result.", required = false )
 	private boolean view = false;
