@@ -50,7 +50,7 @@ public class CameraModel {
 		ry = res[1];
 		rz = res[2];
 
-		CAMERA_FOV = cameraRepeatsPerRow * WIDTH_NO_OVERLAP_UM;
+		CAMERA_FOV = numVirtualCameraStack * WIDTH_NO_OVERLAP_UM;
 		TOTAL_FOV = (TOTAL_NUM_CAMERAS - 1) * CAMERA_FOV + WIDTH_UM;
 
 		// fixed positions of cameras
