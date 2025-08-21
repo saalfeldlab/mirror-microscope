@@ -57,7 +57,7 @@ public class FieldCorrection implements Runnable
 	private String datasetOutputPattern = "setup%d";
 
 	@Option( names = { "-i", "--inverse" }, fallbackValue = "true", arity = "0..1", description = "Flag to invert distortion transformation.", required = false )
-	private boolean inverse = true;
+	private boolean inverse = false;
 
 	@Option( names = { "-v", "--view" }, fallbackValue = "true", arity = "0..1", description = "Flag to view the transformed result.", required = false )
 	private boolean view = false;
@@ -160,9 +160,10 @@ public class FieldCorrection implements Runnable
 
 	public < T extends NumericType< T > & NativeType< T > > RandomAccessibleInterval< T > runCorrection( RandomAccessibleInterval< T > rawImg) {
 
+		final int cameraId = cameraModel.setupToCamera(setupId);
         System.out.println( "  setupId     : " + setupId);
-		System.out.println( "  camera id   : " + cameraModel.setupToCamera(setupId));
-		System.out.println( "  tlation (um): " + Arrays.toString(cameraModel.position(setupId)));
+		System.out.println( "  camera id   : " + cameraId);
+		System.out.println( "  tlation (um): " + Arrays.toString(cameraModel.position(cameraId)));
 
 		final InvertibleRealTransformSequence totalDistortion = totalDistortionCorrectionTransform( setupId );
 		final double[] minMax = Normalization.minMaxOffsetsCorners( totalDistortion, rawImg );
@@ -210,10 +211,11 @@ public class FieldCorrection implements Runnable
 	 * @return
 	 */
 	public InvertibleRealTransformSequence totalDistortionCorrectionTransform(int setupId) {
+		final int cameraId = cameraModel.setupToCamera(setupId);
 		return concatenate( 
-				cameraModel.cameraToImage( setupId ),
+				cameraModel.cameraToImage(cameraId),
 				OpticalModel.distortionTransform(inverse),
-				cameraModel.imageToCamera( setupId ));
+				cameraModel.imageToCamera(cameraId));
 	}
 
 	public static InvertibleRealTransformSequence concatenate( InvertibleRealTransform... transforms) {

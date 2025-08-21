@@ -1,6 +1,8 @@
 package org.janelia.saalfeldlab.mirrormicroscope;
 
+import java.util.Arrays;
 import java.util.stream.DoubleStream;
+import java.util.stream.IntStream;
 
 import net.imglib2.realtransform.ScaleAndTranslation;
 
@@ -42,6 +44,7 @@ public class CameraModel {
 
 		this.cameraRepeatsPerRow = cameraRepeatsPerRow;
 		this.numVirtualCameraStack = numVirtualCameraStack;
+		this.activeCameras = activeCameras;
 
 		rx = res[0];
 		ry = res[1];
@@ -76,10 +79,18 @@ public class CameraModel {
 		this(4, cameraRepeatsPerRow, new double[]{BASE_RX, BASE_RY, BASE_RZ}, ALL_CAMERAS);
 	}
 
-	public int setupToCamera( final int setupId ) {
-		final int row = setupId / cameraRepeatsPerRow;
+	public int setupToRow(final int setupId) {
+		return setupId / cameraRepeatsPerRow;
+	}
+
+	public int setupToColumn(final int setupId) {
+		return setupId % cameraRepeatsPerRow;
+	}
+
+	public int setupToCamera(final int setupId) {
+		final int row = setupToRow(setupId);
 		final int cameraIndex = (row / numVirtualCameraStack) % cameraRepeatsPerRow;
-		final int cameraId = activeCameras[cameraIndex];
+		final int cameraId = activeCameras[cameraIndex % activeCameras.length];
 		return cameraId;
 	}
 
@@ -100,6 +111,42 @@ public class CameraModel {
 
 	public double[] position(final int cameraId) {
 		return new double[]{ xPositionsPhysical[cameraId], yPositionsPhysical[cameraId], 0 };
+	}
+
+	public static void main(String[] args) {
+
+		final int[] activeCameras = IntStream.rangeClosed(1, 8).toArray();
+
+		final CameraModel cm = new CameraModel(13, activeCameras);
+		setups( args ).forEach( setupId -> {
+			System.out.println("setupId  : " + setupId);
+			System.out.println("row      : " + cm.setupToRow(setupId));
+			System.out.println("column   : " + cm.setupToColumn(setupId));
+			final int cameraId = cm.setupToCamera( setupId );
+			System.out.println("cameraId : " + cameraId);
+			System.out.println("position : " + Arrays.toString(cm.position(cameraId)));
+			System.out.println("");
+		});
+
+		System.out.println("done");
+	}
+
+	private static IntStream setups(String[] range) {
+
+		return Arrays.stream(range).flatMapToInt( s -> {
+			if( s.contains("-"))
+				return parseRange(s);
+			else
+				return IntStream.of(Integer.parseInt(s));
+		});
+	}
+
+	private static IntStream parseRange(String range) {
+
+		String[] startEnd = range.split("-");
+		int startInclusive = Integer.parseInt(startEnd[0]);
+		int endInclusive = Integer.parseInt(startEnd[1]);
+		return IntStream.rangeClosed(startInclusive, endInclusive);
 	}
 
 }
