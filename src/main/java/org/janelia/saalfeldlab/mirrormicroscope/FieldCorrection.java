@@ -3,6 +3,7 @@ package org.janelia.saalfeldlab.mirrormicroscope;
 import java.util.Arrays;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.stream.IntStream;
 
 import org.janelia.saalfeldlab.n5.DatasetAttributes;
 import org.janelia.saalfeldlab.n5.N5Reader;
@@ -44,8 +45,13 @@ public class FieldCorrection implements Runnable
 	@Option( names = { "-s", "--setup-id" }, description = "Setup ID number", required = true )
 	private int setupId;
 
-	@Option( names = { "--num-columns" }, description = "Number of columns per camera", required = true )
+	@Option( names = { "-n", "--num-columns" }, description = "Number of columns per camera", required = true )
 	private int columnsPerCamera;
+
+	@Option( names = { "-c", "--active-cameras" },
+			description = "Set of cameras that were used (zero-indexed). Can provide a comma-separated list (3,4,5,6), or a enpoint-inclusive-range (3-6)",
+			required = false )
+	private String activeCamerasArg = "0-9";
 
 	@Option( names = { "-o", "--output-root" }, description = "Output n5 root", required = false )
 	private String outputRoot;
@@ -71,6 +77,7 @@ public class FieldCorrection implements Runnable
 	private DatasetAttributes inputAttributes;
 	private String inputDatasetPath;
 
+	private int[] activeCameras;
 	private CameraModel cameraModel;
 
 	/*
@@ -88,7 +95,8 @@ public class FieldCorrection implements Runnable
 
 	@Override
 	public void run() {
-		cameraModel = new CameraModel(columnsPerCamera);
+
+		cameraModel = CameraModel.fromArgs(columnsPerCamera, activeCamerasArg);
 		process();
 	}
 
@@ -98,6 +106,9 @@ public class FieldCorrection implements Runnable
 		System.out.println("  - Root directory: " + inputRoot);
 		System.out.println("  - Setup ID: " + setupId);
 		System.out.println("  - inverse: " + inverse);
+
+		System.out.println("");
+		System.out.println("camera y-positions: " + Arrays.toString(cameraModel.yPositionsPhysical));
 
 		RandomAccessibleInterval<T> rawImg = read();
 		RandomAccessibleInterval<T> correctedImg = to5d(runCorrection(rawImg));

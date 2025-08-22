@@ -39,7 +39,7 @@ public class CameraModel {
 
 	public CameraModel(final int numVirtualCameraStack,
 			final int cameraRepeatsPerRow,
-			final double[] res, 
+			final double[] res,
 			final int[] activeCameras) {
 
 		this.cameraRepeatsPerRow = cameraRepeatsPerRow;
@@ -114,11 +114,15 @@ public class CameraModel {
 	}
 
 	public static void main(String[] args) {
+		
+		final int columnsPerCamera = Integer.parseInt(args[0]);
+		final String activeCamerasArg = args[1];
+		final String setupsArg = args[2];
 
-		final int[] activeCameras = IntStream.rangeClosed(1, 8).toArray();
+		int[] activeCameras = parseIntegers(activeCamerasArg).toArray();
+		CameraModel cm = new CameraModel(columnsPerCamera, activeCameras);
 
-		final CameraModel cm = new CameraModel(13, activeCameras);
-		setups( args ).forEach( setupId -> {
+		parseIntegers( setupsArg ).forEach( setupId -> {
 			System.out.println("setupId  : " + setupId);
 			System.out.println("row      : " + cm.setupToRow(setupId));
 			System.out.println("column   : " + cm.setupToColumn(setupId));
@@ -131,9 +135,14 @@ public class CameraModel {
 		System.out.println("done");
 	}
 
-	private static IntStream setups(String[] range) {
+	public static CameraModel fromArgs(int columnsPerCamera, String activeCamerasArg) {
+		int[] activeCameras = parseIntegers(activeCamerasArg).toArray();
+		return new CameraModel(columnsPerCamera, activeCameras);
+	}
 
-		return Arrays.stream(range).flatMapToInt( s -> {
+	private static IntStream parseIntegers(final String listOrRange) {
+
+		return Arrays.stream(listOrRange.split(",")).flatMapToInt( s -> {
 			if( s.contains("-"))
 				return parseRange(s);
 			else
@@ -141,7 +150,7 @@ public class CameraModel {
 		});
 	}
 
-	private static IntStream parseRange(String range) {
+	private static IntStream parseRange(final String range) {
 
 		String[] startEnd = range.split("-");
 		int startInclusive = Integer.parseInt(startEnd[0]);
