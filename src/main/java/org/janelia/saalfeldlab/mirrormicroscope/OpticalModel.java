@@ -8,7 +8,9 @@ public class OpticalModel {
 
 	public static final double M0 = 0.02891;  // nominal magnification (image to object)
 	public static final double M1 = 8.318e-9; // magnification distortion
-	public static final double R = 47.14 * 1000; // um
+//	public static final double R = 47.14 * 1000; // um
+
+	public static final double R = 34886.3436009136; // um, scientifically estimated, based on data! <3
 
 	public static Scale3D imageToObject() {
 		return new Scale3D(M0, M0, 1);
