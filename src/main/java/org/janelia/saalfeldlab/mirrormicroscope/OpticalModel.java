@@ -12,6 +12,16 @@ public class OpticalModel {
 
 	public static final double R = 34886.3436009136; // um, scientifically estimated, based on data! <3
 
+	public final double radius;
+
+	public OpticalModel(final double radius) {
+		this.radius = radius;
+	}
+
+	public OpticalModel() {
+		this.radius = R;
+	}
+
 	public static Scale3D imageToObject() {
 		return new Scale3D(M0, M0, 1);
 	}
@@ -20,11 +30,11 @@ public class OpticalModel {
 		return imageToObject().inverse();
 	}
 
-	public static InvertibleRealTransform distortionTransform(boolean inverse) {
+	public InvertibleRealTransform distortionTransform(boolean inverse) {
 		if (inverse)
-			return new SphericalCurvatureZDistortion(3, 2, R).inverse();
+			return new SphericalCurvatureZDistortion(3, 2, radius).inverse();
 		else
-			return new SphericalCurvatureZDistortion(3, 2, R);
+			return new SphericalCurvatureZDistortion(3, 2, radius);
 	}
 
 }

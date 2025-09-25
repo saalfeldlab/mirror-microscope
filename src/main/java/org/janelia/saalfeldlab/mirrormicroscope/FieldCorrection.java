@@ -68,6 +68,9 @@ public class FieldCorrection implements Runnable
 	@Option( names = { "-v", "--view" }, fallbackValue = "true", arity = "0..1", description = "Flag to view the transformed result.", required = false )
 	private boolean view = false;
 
+	@Option( names = { "--radius" }, description = "Radius of curvature distortion")
+	private double radius = OpticalModel.R;
+
 	@Option( names = { "-j", "--num-jobs" }, description = "Number of threads", required = false )
 	private int nThreads = 1;
 
@@ -106,6 +109,7 @@ public class FieldCorrection implements Runnable
 		System.out.println("  - Root directory: " + inputRoot);
 		System.out.println("  - Setup ID: " + setupId);
 		System.out.println("  - inverse: " + inverse);
+		System.out.println("  - radius: " + radius);
 
 		System.out.println("");
 		System.out.println("camera y-positions: " + Arrays.toString(cameraModel.yPositionsPhysical));
@@ -225,7 +229,7 @@ public class FieldCorrection implements Runnable
 		final int cameraId = cameraModel.setupToCamera(setupId);
 		return concatenate( 
 				cameraModel.cameraToImage(cameraId),
-				OpticalModel.distortionTransform(inverse),
+				new OpticalModel(radius).distortionTransform(inverse),
 				cameraModel.imageToCamera(cameraId));
 	}
 
