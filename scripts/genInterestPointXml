@@ -1,0 +1,9 @@
+#!/bin/bash
+
+pattern='    <ViewInterestPointsFile timepoint="0" setup="{id}" label="{label-id}" params="">tpId_0_viewSetupId_{id}/{label-id}</ViewInterestPointsFile>'
+label="ip7-corr-transformed"
+
+for setup in `seq 0 95`
+do
+    echo "$pattern" | sed -e "s/{id}/$setup/g" -e "s/{label-id}/$label/g"
+done
