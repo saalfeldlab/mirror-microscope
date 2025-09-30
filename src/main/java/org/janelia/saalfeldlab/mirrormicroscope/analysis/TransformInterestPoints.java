@@ -32,6 +32,10 @@ public class TransformInterestPoints {
 		URI uri = URI.create(args[0]);
 		String detectionName = args[1];
 
+		String inv = "";
+		if (args.length > 2)
+			inv = args[2];
+
 		SpimData2 data;
 		try {
 			data = new XmlIoSpimData2().load(uri);
@@ -42,6 +46,7 @@ public class TransformInterestPoints {
 
 		final TransformInterestPoints alg = new TransformInterestPoints(uri, detectionName);
 		alg.xmlURI = uri;
+		alg.invert = inv.toLowerCase().startsWith("i");
 		alg.run();
 	}
 
@@ -52,6 +57,7 @@ public class TransformInterestPoints {
 
 	CameraModel cameraModel;
 	Interval itvl;
+	boolean invert = false;
 
 	final double radius = OpticalModel.R;
 
@@ -92,7 +98,8 @@ public class TransformInterestPoints {
 	
 			System.out.println("id: " + id);
 			final ViewId viewId = new ViewId(0,id);
-			final InvertibleRealTransformSequence tform = totalDistortionCorrectionTransform(id);
+			final InvertibleRealTransformSequence tmpTform = totalDistortionCorrectionTransform(id);
+			final InvertibleRealTransform tform = invert ? tmpTform.inverse() : tmpTform;
 
 			final Map<ViewId, ViewInterestPointLists> iMap = data.getViewInterestPoints().getViewInterestPoints();
 			final InterestPoints ip = iMap.get(viewId).getInterestPointList(detectionName);
@@ -101,7 +108,6 @@ public class TransformInterestPoints {
 
 			final ArrayList<InterestPoint> transformedPts = new ArrayList<>(pts.size());
 			for (InterestPoint p : pts) {
-				double[] tmpB = new double[3];
 				transformedPts.add(transformPoint(tform, p));
 			}
 
