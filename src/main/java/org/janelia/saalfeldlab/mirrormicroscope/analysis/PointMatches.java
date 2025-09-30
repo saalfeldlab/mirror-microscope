@@ -118,8 +118,8 @@ public class PointMatches {
 				return;
 
 			int N = corr.size();
-			
-			Stats errorStats = coordStats(corr, ipMvg, mvgTform, ipFix, fixTform, setupIdFix);
+
+			String errorStats = coordStats(corr, ipMvg, mvgTform, ipFix, fixTform, setupIdFix);
 			if (errorStats == null)
 				return;			
 
@@ -130,7 +130,7 @@ public class PointMatches {
 		});
 	}
 	
-	public Stats coordStats(
+	public String coordStats(
 			final List<CorrespondingInterestPoints> mvgToFixedCorrespondences,
 			final InterestPoints ipMvg,
 			final InvertibleRealTransform mvgTform,
@@ -151,7 +151,9 @@ public class PointMatches {
 		final List<InterestPoint> ptsMvg = ipMvg.getInterestPointsCopy();
 		final List<InterestPoint> ptsFix = ipFix.getInterestPointsCopy();
 
-		final Stats stats = new Stats();
+		final Stats statsX = new Stats();
+		final Stats statsY = new Stats();
+		final Stats statsZ = new Stats();
 		for( int i = 0; i < N; i++ ) {
 
 			CorrespondingInterestPoints cpoint = mvgToFixedCorrespondences.get( i );
@@ -179,10 +181,12 @@ public class PointMatches {
 			fix[1] = fixPoint.getDoublePosition(1);
 			fix[2] = fixPoint.getDoublePosition(2);
 
-			stats.addSample(mvg[0], mvg[1], mvg[2]);
+			statsX.addSample(mvg[0]);
+			statsY.addSample(mvg[1]);
+			statsZ.addSample(mvg[2]);
 		}
 
-		return stats;
+		return statsX.toString() + "," + statsY.toString() + "," + statsZ.toString();
 	}
 
 	public ArrayList<int[]> tilePairs() {
@@ -290,29 +294,29 @@ public class PointMatches {
 	
 	private static class Stats  {
 		
-		private double minX = Double.MAX_VALUE;
-		private double minY = Double.MAX_VALUE;
-		private double minZ = Double.MAX_VALUE;
-		private double maxX = -1;
-		private double maxY = -1;
-		private double maxZ = -1;
+		private double min = Double.MAX_VALUE;
+		private double max = -1;
 
-		public void addSample( final double x, final double y, final double z ) {
-			
-			minX = x < minX ? x : minX;
-			maxX = x < maxX ? x : maxX;
+		private double sum = 0;
+		private double sumSquares = 0;
 
-			minY = y < minY ? y : minY;
-			maxY = y < maxY ? y : maxY;
+		private double N = 0;
 
-			minZ = z < minZ ? z : minZ;
-			maxZ = z < maxZ ? z : maxZ;
+		public void addSample( final double x ) {
+	
+			min = x < min ? x : min;
+			max = x > max ? x : max;
+
+			sum += x;
+			sumSquares += x;
+
+			N++;
 		}
 
 		@Override
 		public String toString() {
-			return String.format("%f,%f,%f,%f,%f,%f",
-					minX, maxX, minY, maxY, minZ, maxZ);
+			return String.format("%d,%f,%f,%f,%f",
+					N,  sum, sumSquares, min, max);
 		}
 
 	}
