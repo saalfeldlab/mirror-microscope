@@ -105,7 +105,9 @@ public class PairwiseError {
 			final AffineTransform3D mvgTform = data.getViewRegistrations().getViewRegistration(viewIdMvg).getModel(); 
 			final AffineTransform3D fixTform = data.getViewRegistrations().getViewRegistration(viewIdFix).getModel(); 
 
-			final Map<ViewId, ViewInterestPointLists> iMap = dataForCorrespondences.getViewInterestPoints().getViewInterestPoints();
+			// need to get the interest points from the "data" instance
+			// but the set of correspondences from "dataForCorrespondences"
+			final Map<ViewId, ViewInterestPointLists> iMap = data.getViewInterestPoints().getViewInterestPoints();
 			final InterestPoints ipMvg = iMap.get(viewIdMvg).getInterestPointList(detectionName);
 			final InterestPoints ipFix = iMap.get(viewIdFix).getInterestPointList(detectionName);
 
