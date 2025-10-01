@@ -46,7 +46,8 @@ public class PairwiseError {
 			detectionNameForCorrespondences = detectionName;
 		}
 
-		PairwiseError alg = new PairwiseError(uri, uriForCorrespondences, detectionName);
+		PairwiseError alg = new PairwiseError(uri, detectionName,
+				uriForCorrespondences, detectionNameForCorrespondences);
 		alg.run();
 	}
 
