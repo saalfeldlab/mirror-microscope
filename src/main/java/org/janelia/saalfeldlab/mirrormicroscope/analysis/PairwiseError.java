@@ -36,10 +36,15 @@ public class PairwiseError {
 		String detectionName = args[1];
 
 		URI uriForCorrespondences;
-		if( args.length > 2 )
+		String detectionNameForCorrespondences;
+		if( args.length > 3 ) {
 			uriForCorrespondences = URI.create(args[2]);
-		else
+			detectionNameForCorrespondences = args[3];
+		}
+		else {
 			uriForCorrespondences = uri;
+			detectionNameForCorrespondences = detectionName;
+		}
 
 		PairwiseError alg = new PairwiseError(uri, uriForCorrespondences, detectionName);
 		alg.run();
@@ -47,14 +52,17 @@ public class PairwiseError {
 
 	SpimData2 data;
 	SpimData2 dataForCorrespondences;
+
 	String detectionName;
+	String detectionNameForCorrespondences;
 
 	final int minDataPoints = 4;
 
 	CameraModel cameraModel;
 	Interval itvl;
 
-	public PairwiseError( URI uri, URI uriForCorrespondences, String detectionName ) {
+	public PairwiseError( URI uri, String detectionName, 
+			URI uriForCorrespondences, String detectionNameForCorrespondences ) {
 
 		try {
 			data = new XmlIoSpimData2().load(uri);
@@ -67,6 +75,7 @@ public class PairwiseError {
 		itvl = new FinalInterval(new long[]{4096, 2560, 3300});
 
 		this.detectionName = detectionName;
+		this.detectionNameForCorrespondences = detectionNameForCorrespondences;
 	}
 
 	public ArrayList<Integer> setupIds() {
@@ -119,7 +128,7 @@ public class PairwiseError {
 			
 			Stats errorStats = errorStats(corr, ipMvg, mvgTform, ipFix, fixTform, setupIdFix);
 			if (errorStats == null)
-				return;			
+				return;
 
 			System.out.println(String.format("%d,%d,%d,%d,%d,"
 					+ "%s", 
@@ -226,11 +235,10 @@ public class PairwiseError {
 			final ViewId viewIdMvg, final ViewId viewIdFix ) {
 
 		Map<ViewId, ViewInterestPointLists> iMap = dataForCorrespondences.getViewInterestPoints().getViewInterestPoints();
-
 		ViewInterestPointLists iplists = iMap.get( viewIdMvg );
 
 		// this is net.preibisch.mvrecon.fiji.spimdata.interestpoints.InterestPointsN5
-		InterestPoints ips = iplists.getInterestPointList( detectionName ); 
+		InterestPoints ips = iplists.getInterestPointList( detectionNameForCorrespondences ); 
 
 		if (ips == null) {
 			System.out.println("no interest points found for " + viewIdMvg + " <-> " + viewIdFix);
