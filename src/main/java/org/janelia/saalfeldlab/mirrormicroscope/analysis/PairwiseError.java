@@ -172,9 +172,6 @@ public class PairwiseError {
 			if( otherViewId.getViewSetupId() != debugSetupIdFix)
 				System.out.println("unexpected otherViewId: " + otherViewId);
 
-			if( !otherLabel.equals(detectionName))
-				System.out.println("unexpected otherLabel: " + otherLabel);
-
 			final InterestPoint mvgPoint = 
 					transformPoint(mvgTform, ptsMvg.get( mvgId ), tmpS, tmpD);	
 			mvg[0] = mvgPoint.getDoublePosition(0);
@@ -260,13 +257,11 @@ public class PairwiseError {
 		tform.apply(tmpSrc, tmpDst);
 		return tmpDst;
 	}
-	
+
 	public static InterestPoint transformPoint( InvertibleRealTransform tform, InterestPoint pt,
 			double[] tmpSrc, double[] tmpDst ) {
 
 		pt.localize(tmpSrc);
-//		tmpSrc = pt.getL();
-
 		tform.apply(tmpSrc, tmpDst);
 		return new InterestPoint(pt.getId(), tmpDst);
 	}
@@ -279,7 +274,6 @@ public class PairwiseError {
 		}
 		return Math.sqrt(d);
 	}
-
 
 	public static InvertibleRealTransform identity() {
 		return new Scale3D(1, 1, 1);
