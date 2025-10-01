@@ -35,19 +35,18 @@ public class PairwiseError {
 		URI uri = URI.create(args[0]);
 		String detectionName = args[1];
 
-		SpimData2 data;
-		try {
-			data = new XmlIoSpimData2().load(uri);
-		} catch (SpimDataException e) {
-			e.printStackTrace();
-			return;
-		}
+		URI uriForCorrespondences;
+		if( args.length > 2 )
+			uriForCorrespondences = URI.create(args[2]);
+		else
+			uriForCorrespondences = uri;
 
-		PairwiseError alg = new PairwiseError(uri, detectionName);
+		PairwiseError alg = new PairwiseError(uri, uriForCorrespondences, detectionName);
 		alg.run();
 	}
 
 	SpimData2 data;
+	SpimData2 dataForCorrespondences;
 	String detectionName;
 
 	final int minDataPoints = 4;
@@ -55,10 +54,11 @@ public class PairwiseError {
 	CameraModel cameraModel;
 	Interval itvl;
 
-	public PairwiseError( URI uri, String detectionName ) {
+	public PairwiseError( URI uri, URI uriForCorrespondences, String detectionName ) {
 
 		try {
 			data = new XmlIoSpimData2().load(uri);
+			dataForCorrespondences = new XmlIoSpimData2().load(uriForCorrespondences);
 		} catch (SpimDataException e) {
 			e.printStackTrace();
 		}
@@ -105,7 +105,7 @@ public class PairwiseError {
 			final AffineTransform3D mvgTform = data.getViewRegistrations().getViewRegistration(viewIdMvg).getModel(); 
 			final AffineTransform3D fixTform = data.getViewRegistrations().getViewRegistration(viewIdFix).getModel(); 
 
-			final Map<ViewId, ViewInterestPointLists> iMap = data.getViewInterestPoints().getViewInterestPoints();
+			final Map<ViewId, ViewInterestPointLists> iMap = dataForCorrespondences.getViewInterestPoints().getViewInterestPoints();
 			final InterestPoints ipMvg = iMap.get(viewIdMvg).getInterestPointList(detectionName);
 			final InterestPoints ipFix = iMap.get(viewIdFix).getInterestPointList(detectionName);
 
@@ -223,7 +223,7 @@ public class PairwiseError {
 	public List<CorrespondingInterestPoints> getCorrespondences(
 			final ViewId viewIdMvg, final ViewId viewIdFix ) {
 
-		Map<ViewId, ViewInterestPointLists> iMap = data.getViewInterestPoints().getViewInterestPoints();
+		Map<ViewId, ViewInterestPointLists> iMap = dataForCorrespondences.getViewInterestPoints().getViewInterestPoints();
 
 		ViewInterestPointLists iplists = iMap.get( viewIdMvg );
 
@@ -240,7 +240,6 @@ public class PairwiseError {
 			return c.getCorrespondingViewId().getViewSetupId() == viewIdFix.getViewSetupId();
 		}).collect(Collectors.toList());
 	}
-
 
 	public static double[] transformPointToArray( RealTransform tform, InterestPoint pt) {
 
