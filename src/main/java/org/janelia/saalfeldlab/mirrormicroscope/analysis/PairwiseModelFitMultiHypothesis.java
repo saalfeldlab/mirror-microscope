@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.io.Writer;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -15,6 +14,7 @@ import java.util.stream.Collectors;
 
 import org.janelia.saalfeldlab.mirrormicroscope.CameraModel;
 import org.janelia.saalfeldlab.mirrormicroscope.OpticalModel;
+import org.janelia.saalfeldlab.mirrormicroscope.vis.PointPlotter;
 
 import mpicbg.models.AbstractAffineModel3D;
 import mpicbg.models.AffineModel3D;
@@ -23,6 +23,7 @@ import mpicbg.models.Model;
 import mpicbg.models.NotEnoughDataPointsException;
 import mpicbg.models.PointMatch;
 import mpicbg.models.TranslationModel3D;
+import mpicbg.models.RigidModel3D;
 import mpicbg.spim.data.SpimData;
 import mpicbg.spim.data.SpimDataException;
 import mpicbg.spim.data.registration.ViewRegistration;
@@ -45,12 +46,15 @@ import net.preibisch.mvrecon.process.interestpointregistration.pairwise.methods.
 
 public class PairwiseModelFitMultiHypothesis {
 	
+	public static enum Projection { XY, XZ, YZ };
+
 	static double rx = 0.157;
 	static double ry = 0.157;
 	static double rz = 1.0;
 	
 	static String TRANSLATION = "translation";
 	static String AFFINE = "affine";
+	static String RIGID = "rigid";
 
 	public static void main(String[] args) {
 
@@ -63,7 +67,7 @@ public class PairwiseModelFitMultiHypothesis {
 		String detectionName = args[1];
 		String baseDestination = args[2];
 
-		String modelType = "affine";
+		String modelType = "translation";
 		if( args.length > 3 )
 			modelType = args[3];
 
@@ -83,14 +87,14 @@ public class PairwiseModelFitMultiHypothesis {
 
 	// matching parameters
 	final int numNeighbors = 3; // number of neighbors the descriptor is built from
-	final int redundancy = 1; // redundancy of the descriptor (adds more neighbors and tests all combinations)
+	final int redundancy = 2; // redundancy of the descriptor (adds more neighbors and tests all combinations)
 	final float ratioOfDistance = 3.0f; // how much better the best than the second best descriptor need to be
 	final boolean limitSearchRadius = true; // limit search to a radius
 	final float searchRadius = 1000.0f; // the search radius
 
-	final int minNumCorrespondences = 50;
+	final int minNumCorrespondences = 5;
 	final int numIterations = 10_000;
-	final double maxEpsilon = 2.5; // setting this very low so we get multi-consensus
+	final double maxEpsilon = 5; // setting this very low so we get multi-consensus
 	final double minInlierRatio = 0.1;
 
 	public PairwiseModelFitMultiHypothesis( URI uri, String detectionName ) {
@@ -112,6 +116,8 @@ public class PairwiseModelFitMultiHypothesis {
 		final String modelTypeNorm = modelType.toLowerCase();
 		if( modelTypeNorm.equals(TRANSLATION))
 			return new TranslationModel3D();
+		else if( modelTypeNorm.equals(RIGID))
+			return new RigidModel3D();
 		else if( modelTypeNorm.equals(AFFINE))
 			return new AffineModel3D();
 		else
@@ -123,16 +129,15 @@ public class PairwiseModelFitMultiHypothesis {
 
 	public void run(Model<?> modelType) {
 		
+		System.out.println("using model type: " + modelType.getClass().getName());
+		
 		Model model = modelType.copy();
-		System.out.println( "mvgId,mvgCamera,fixId,fixCamera,numCorrespondences," +
-				"affine-xx,affine-xy,affine-xz,affine-xt," + 
-				"affine-yx,affine-yy,affine-yz,affine-yt," +
-				"affine-zx,affine-zy,affine-zz,affine-zt");
-
 		tilePairs().forEach( p -> {
 			 
 			int setupId1 = p[0];
 			int setupId2 = p[1];
+
+			String pointImgPath = String.format("%s_%d-%d-pts-vis.png", baseDestination, setupId1, setupId2);
 
 			PrintWriter pointWriter;
 			PrintWriter modelWriter;
@@ -205,6 +210,7 @@ public class PairwiseModelFitMultiHypothesis {
 			final ArrayList< PointMatchGeneric< InterestPoint > > inliers = new ArrayList<>();
 			
 			final ArrayList< PointMatchGeneric< InterestPoint > > allMatches = new ArrayList<>();
+			final ArrayList<Integer> inlierSetSizes = new ArrayList<>();
 
 			int consensusSetId = 0;
 
@@ -235,6 +241,7 @@ public class PairwiseModelFitMultiHypothesis {
 					System.out.println( "Found " + inliers.size() + "/" + candidates.size() + " inliers with model: " + model );
 
 					allMatches.addAll(inliers);
+					inlierSetSizes.add( inliers.size());
 					writeInliers(pointWriter, consensusSetId, inliers );
 					writeModel( modelWriter, consensusSetId, (AbstractAffineModel3D<?>)model);
 					consensusSetId++;
@@ -256,11 +263,15 @@ public class PairwiseModelFitMultiHypothesis {
 			try {
 				System.out.println("Fitting model with all points, total: " + allMatches.size());
 				model.fit(allMatches);
-					writeModel( modelWriter, -1, (AbstractAffineModel3D<?>)model);
+				writeModel(modelWriter, -1, (AbstractAffineModel3D<?>)model);
 			} catch (NotEnoughDataPointsException e) {
 				e.printStackTrace();
 			} catch (IllDefinedDataPointsException e) {
 				e.printStackTrace();
+			}
+
+			if (pointImgPath != null) {
+				makeImage(pointImgPath, allMatches, inlierSetSizes);
 			}
 
 			pointWriter.close();
@@ -273,6 +284,69 @@ public class PairwiseModelFitMultiHypothesis {
 		model.getMatrix(params);
 		writer.println( String.format("%d,%s",
 				id, print(params)));
+	}
+
+	public void makeImage(final String file, final ArrayList<PointMatchGeneric<InterestPoint>> allMatches, final ArrayList<Integer> inlierSetSizes) {
+
+		CategorizedPoints catPts = CategorizedPoints.from(Projection.XZ, allMatches, inlierSetSizes);
+
+		try {
+
+			System.out.println("writing image to: " + file);
+
+			PointPlotter.savePlotToPNG(catPts.points, catPts.categories, file, 640, 1024);
+
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
+	}
+
+	private static class CategorizedPoints {
+
+		private double[][] points;
+		private int[] categories;
+
+		public CategorizedPoints(double[][] pts, int[] cats) {
+
+			this.points = pts;
+			this.categories = cats;
+		}
+
+		public static CategorizedPoints from(final Projection projection,
+				final ArrayList<PointMatchGeneric<InterestPoint>> allMatches, ArrayList<Integer> inlierSetSizes) {
+
+			int N = allMatches.size();
+			double[][] pts = new double[N][2];
+			int[] categories = new int[N];
+
+			int id = 0;
+			int cumulativeSize = inlierSetSizes.get(0);
+
+			for (int i = 0; i < N; i++) {
+
+				if (i >= cumulativeSize) {
+					id++;
+					cumulativeSize += inlierSetSizes.get(id);
+				}
+
+				if (projection == Projection.XY) {
+					pts[i][0] = allMatches.get(i).getPoint1().getL()[0];
+					pts[i][1] = allMatches.get(i).getPoint1().getL()[1];
+				} else if (projection == Projection.XZ) {
+					pts[i][0] = allMatches.get(i).getPoint1().getL()[0];
+					pts[i][1] = allMatches.get(i).getPoint1().getL()[2];
+				} else if (projection == Projection.YZ) {
+					pts[i][0] = allMatches.get(i).getPoint1().getL()[1];
+					pts[i][1] = allMatches.get(i).getPoint1().getL()[2];
+				}
+
+				categories[i] = id;
+			}
+
+			return new CategorizedPoints(pts, categories);
+		}
+
 	}
 
 	public void writeInliers(final PrintWriter writer, int id, List<PointMatchGeneric< InterestPoint >> inliers ) {
@@ -354,9 +428,9 @@ public class PairwiseModelFitMultiHypothesis {
 		int nr = 32;
 		ArrayList<int[]> pairs = new ArrayList<>();
 		
-//		pairs.add(new int[] {46,49});
-//		if (true)
-//			return pairs;
+		pairs.add(new int[] {46,49});
+		if (true)
+			return pairs;
 
 		for (int r = 0; r < nr; r++) {
 			for (int c = 0; c < nc; c++) {
