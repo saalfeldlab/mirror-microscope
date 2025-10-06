@@ -57,16 +57,15 @@ public class PointPlotter extends JPanel {
         Color[] colors = {
             Color.RED, Color.BLUE, Color.GREEN, Color.ORANGE, 
             Color.MAGENTA, Color.CYAN, Color.PINK, Color.YELLOW,
-            new Color(128, 0, 128), new Color(0, 128, 128)
-        };
-        
-        int idx = 0;
-        for (int cat : uniqueCategories) {
-            map.put(cat, colors[idx % colors.length]);
-            idx++;
-        }
-        
-        return map;
+            Color.BLACK
+		};
+
+		for (int cat : uniqueCategories) {
+			int colorIdx = cat < colors.length ? cat : colors.length - 1;
+			map.put(cat, colors[colorIdx]);
+		}
+
+		return map;
     }
     
     private void calculateBounds() {
