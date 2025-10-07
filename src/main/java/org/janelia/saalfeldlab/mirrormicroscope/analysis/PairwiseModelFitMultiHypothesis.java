@@ -22,8 +22,8 @@ import mpicbg.models.IllDefinedDataPointsException;
 import mpicbg.models.Model;
 import mpicbg.models.NotEnoughDataPointsException;
 import mpicbg.models.PointMatch;
-import mpicbg.models.TranslationModel3D;
 import mpicbg.models.RigidModel3D;
+import mpicbg.models.TranslationModel3D;
 import mpicbg.spim.data.SpimData;
 import mpicbg.spim.data.SpimDataException;
 import mpicbg.spim.data.registration.ViewRegistration;
@@ -56,30 +56,17 @@ public class PairwiseModelFitMultiHypothesis {
 	static String AFFINE = "affine";
 	static String RIGID = "rigid";
 
-	public static void main(String[] args) {
+	// tile pairs options
+	static String ALL = "all";
+	static String DIFFCAM = "differentcameras";
+	static String SAMECAM = "samecameras";
 
-		String uriString = args[0];
-		if (!uriString.startsWith("file:")) {
-			uriString = "file:" + uriString;
-		}
-
-		URI uri = URI.create(uriString);
-		String detectionName = args[1];
-		String baseDestination = args[2];
-
-		String modelType = "translation";
-		if( args.length > 3 )
-			modelType = args[3];
-
-		PairwiseModelFitMultiHypothesis alg = new PairwiseModelFitMultiHypothesis(uri, detectionName);
-		alg.baseDestination = baseDestination;
-		alg.run(getModel(modelType));
-	}
 
 	SpimData2 data;
 	String detectionName;
 	String baseDestination;
-
+	String modelType;
+	String tilePairsOption;
 
 	CameraModel cameraModel;
 	double radius = OpticalModel.R;
@@ -88,13 +75,14 @@ public class PairwiseModelFitMultiHypothesis {
 	// matching parameters
 	final int numNeighbors = 3; // number of neighbors the descriptor is built from
 	final int redundancy = 2; // redundancy of the descriptor (adds more neighbors and tests all combinations)
-	final float ratioOfDistance = 3.0f; // how much better the best than the second best descriptor need to be
+	final float ratioOfDistance = 4.0f; // how much better the best than the second best descriptor need to be
+
 	final boolean limitSearchRadius = true; // limit search to a radius
 	final float searchRadius = 1000.0f; // the search radius
 
 	final int minNumCorrespondences = 5;
-	final int numIterations = 10_000;
-	final double maxEpsilon = 5; // setting this very low so we get multi-consensus
+	final int numIterations = 1000;
+	final double maxEpsilon = 10; // setting this very low so we get multi-consensus
 	final double minInlierRatio = 0.1;
 
 	public PairwiseModelFitMultiHypothesis( URI uri, String detectionName ) {
@@ -127,27 +115,48 @@ public class PairwiseModelFitMultiHypothesis {
 		}
 	}
 
-	public void run(Model<?> modelType) {
+	private List<int[]> getTilePairs() {
 		
-		System.out.println("using model type: " + modelType.getClass().getName());
+		final String tilePairsOptionNorm = tilePairsOption.toLowerCase();
+		if( tilePairsOptionNorm.equals(ALL))
+			return tilePairs();
+		else if( tilePairsOptionNorm.equals(DIFFCAM))
+			return tilePairsDifferentCams();
+		else if( tilePairsOptionNorm.equals(SAMECAM))
+			return tilePairsSameCams();
+		else
+		{
+			System.out.println("Unknown tile pairs option: " + tilePairsOption);
+			return null;
+		}
+	}
+
+	public void run() {
 		
-		Model model = modelType.copy();
-		tilePairs().forEach( p -> {
+		System.out.println("using model type: " + modelType);
+		Model model = getModel(modelType);
+
+		getTilePairs().forEach( p -> {
 			 
 			int setupId1 = p[0];
 			int setupId2 = p[1];
+	
+			System.out.println("");
+			System.out.println("##################");
+			System.out.println("");
+			System.out.println("tile pair: " + setupId1 + "  " + setupId2);
 
-			String pointImgPath = String.format("%s_%d-%d-pts-vis.png", baseDestination, setupId1, setupId2);
+			String pointImgPath = String.format("%s_%s_%d-%d-pts-vis.png", baseDestination, modelType, setupId1, setupId2);
 
 			PrintWriter pointWriter;
 			PrintWriter modelWriter;
 			try {
 
 				pointWriter = new PrintWriter(new FileWriter(
-						new File(String.format("%s_%d-%d-pts.csv", baseDestination, setupId1, setupId2))));
+						new File(String.format("%s_%s_%d-%d-pts.csv", baseDestination, modelType, setupId1, setupId2))));
 
 				modelWriter = new PrintWriter(new FileWriter(
-						new File(String.format("%s_%d-%d-models.csv", baseDestination, setupId1, setupId2))));
+						new File(String.format("%s_%s_%d-%d-models.csv", baseDestination, modelType, setupId1, setupId2))));
 
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -261,17 +270,21 @@ public class PairwiseModelFitMultiHypothesis {
 			
 
 			try {
-				System.out.println("Fitting model with all points, total: " + allMatches.size());
-				model.fit(allMatches);
-				writeModel(modelWriter, -1, (AbstractAffineModel3D<?>)model);
+
+				if( allMatches.size() > 4 ) {
+					System.out.println("Fitting model with all points, total: " + allMatches.size());
+					model.fit(allMatches);
+					writeModel(modelWriter, -1, (AbstractAffineModel3D<?>)model);
+
+					if (pointImgPath != null) {
+						makeImage(pointImgPath, allMatches, inlierSetSizes);
+					}
+
+				}
 			} catch (NotEnoughDataPointsException e) {
 				e.printStackTrace();
 			} catch (IllDefinedDataPointsException e) {
 				e.printStackTrace();
-			}
-
-			if (pointImgPath != null) {
-				makeImage(pointImgPath, allMatches, inlierSetSizes);
 			}
 
 			pointWriter.close();
@@ -428,9 +441,9 @@ public class PairwiseModelFitMultiHypothesis {
 		int nr = 32;
 		ArrayList<int[]> pairs = new ArrayList<>();
 		
-		pairs.add(new int[] {46,49});
-		if (true)
-			return pairs;
+//		pairs.add(new int[] {46,49});
+//		if (true)
+//			return pairs;
 
 		for (int r = 0; r < nr; r++) {
 			for (int c = 0; c < nc; c++) {
@@ -457,6 +470,31 @@ public class PairwiseModelFitMultiHypothesis {
 		return pairs;
 	}
 
+	public ArrayList<int[]> tilePairsDifferentCams() {
+
+		ArrayList<int[]> pairs = new ArrayList<>();
+		int setup = 10;
+		
+		while( setup < 90) {
+			pairs.add(new int[] {setup, setup+3});
+			setup+=12;
+		}
+		return pairs;
+	}
+	
+	public ArrayList<int[]> tilePairsSameCams() {
+
+		ArrayList<int[]> pairs = new ArrayList<>();
+		int setup = 10;
+		
+		while( setup < 90) {
+			pairs.add(new int[] {setup, setup-3});
+			setup+=12;
+		}
+		return pairs;
+	}
+
+
 	public int setup(int r, int c, int nc) {
 		return c + nc * r;
 	}
@@ -470,5 +508,26 @@ public class PairwiseModelFitMultiHypothesis {
 			.mapToObj(Double::toString)
 			.collect(Collectors.joining(","));
 	}
+	
+	public static void main(String[] args) {
+
+		String uriString = args[0];
+		if (!uriString.startsWith("file:")) {
+			uriString = "file:" + uriString;
+		}
+
+		URI uri = URI.create(uriString);
+		String detectionName = args[1];
+		String baseDestination = args[2];
+		String modelType = args[3];
+		String tilePairsOption = args[4];
+
+		PairwiseModelFitMultiHypothesis alg = new PairwiseModelFitMultiHypothesis(uri, detectionName);
+		alg.baseDestination = baseDestination;
+		alg.modelType = modelType;
+		alg.tilePairsOption = tilePairsOption;
+		alg.run();
+	}
+
 
 }
