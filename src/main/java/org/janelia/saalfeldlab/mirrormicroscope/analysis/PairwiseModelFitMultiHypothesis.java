@@ -16,14 +16,14 @@ import org.janelia.saalfeldlab.mirrormicroscope.CameraModel;
 import org.janelia.saalfeldlab.mirrormicroscope.OpticalModel;
 import org.janelia.saalfeldlab.mirrormicroscope.vis.PointPlotter;
 
+import mpicbg.models.TranslationModel3D;
 import mpicbg.models.AbstractAffineModel3D;
 import mpicbg.models.AffineModel3D;
+import mpicbg.models.RigidModel3D;
 import mpicbg.models.IllDefinedDataPointsException;
 import mpicbg.models.Model;
 import mpicbg.models.NotEnoughDataPointsException;
 import mpicbg.models.PointMatch;
-import mpicbg.models.RigidModel3D;
-import mpicbg.models.TranslationModel3D;
 import mpicbg.spim.data.SpimData;
 import mpicbg.spim.data.SpimDataException;
 import mpicbg.spim.data.registration.ViewRegistration;
@@ -82,7 +82,7 @@ public class PairwiseModelFitMultiHypothesis {
 
 	final int minNumCorrespondences = 5;
 	final int numIterations = 1000;
-	final double maxEpsilon = 10; // setting this very low so we get multi-consensus
+	final double maxEpsilon = 5; // setting this very low so we get multi-consensus
 	final double minInlierRatio = 0.1;
 
 	public PairwiseModelFitMultiHypothesis( URI uri, String detectionName ) {
@@ -133,7 +133,19 @@ public class PairwiseModelFitMultiHypothesis {
 
 	public void run() {
 		
+		System.out.println("parameters:");
 		System.out.println("using model type: " + modelType);
+		System.out.println("numNeighbors " + numNeighbors);
+		System.out.println("redundancy " + redundancy);
+		System.out.println("ratioOfDistance " + ratioOfDistance);
+
+		System.out.println("limitSearchRadius " + limitSearchRadius);
+		System.out.println("searchRadius " + searchRadius);
+		System.out.println("minNumCorrespondences " + minNumCorrespondences);
+		System.out.println("numIterations " + numIterations);
+		System.out.println("maxEpsilon " + maxEpsilon);
+		System.out.println("minInlierRatio " + minInlierRatio);
+
 		Model model = getModel(modelType);
 
 		getTilePairs().forEach( p -> {
@@ -150,6 +162,7 @@ public class PairwiseModelFitMultiHypothesis {
 
 			PrintWriter pointWriter;
 			PrintWriter modelWriter;
+			PrintWriter statsWriter;
 			try {
 
 				pointWriter = new PrintWriter(new FileWriter(
@@ -157,6 +170,9 @@ public class PairwiseModelFitMultiHypothesis {
 
 				modelWriter = new PrintWriter(new FileWriter(
 						new File(String.format("%s_%s_%d-%d-models.csv", baseDestination, modelType, setupId1, setupId2))));
+
+				statsWriter = new PrintWriter(new FileWriter(
+						new File(String.format("%s_%s_%d-%d-stats.csv", baseDestination, modelType, setupId1, setupId2))));
 
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -168,6 +184,9 @@ public class PairwiseModelFitMultiHypothesis {
 
 			final ViewId viewId2 = new ViewId(0, setupId2);
 			final int camera2 = setupToCamera(setupId2);
+	
+			System.out.println("cam1: " + camera1);
+			System.out.println("cam2: " + camera2);
 
 			// calibration etc
 			final SequenceDescription sd = data.getSequenceDescription();
@@ -175,7 +194,7 @@ public class PairwiseModelFitMultiHypothesis {
 			// get interest points
 			final List<InterestPoint> ipListLocal1 = getInterestPoints( data, viewId1, detectionName );
 			final List<InterestPoint> ipListLocal2 = getInterestPoints( data, viewId2, detectionName );
-			
+
 			System.out.println( "Loaded " + ipListLocal1.size() + " and " + ipListLocal2.size() + " interest points (in local coordinates of each view)." );
 
 			// current transforms for the views
@@ -220,6 +239,7 @@ public class PairwiseModelFitMultiHypothesis {
 			
 			final ArrayList< PointMatchGeneric< InterestPoint > > allMatches = new ArrayList<>();
 			final ArrayList<Integer> inlierSetSizes = new ArrayList<>();
+			final ArrayList<Stats> statsPerModel = new ArrayList<>();
 
 			int consensusSetId = 0;
 
@@ -241,7 +261,7 @@ public class PairwiseModelFitMultiHypothesis {
 					System.out.println( "Not enough points for matching. stopping.");
 					System.exit( 1 );
 				}
-		
+
 				if ( modelFound && inliers.size() >= minNumCorrespondences )
 				{
 					// highly suggested in general
@@ -250,9 +270,16 @@ public class PairwiseModelFitMultiHypothesis {
 					System.out.println( "Found " + inliers.size() + "/" + candidates.size() + " inliers with model: " + model );
 
 					allMatches.addAll(inliers);
-					inlierSetSizes.add( inliers.size());
+					inlierSetSizes.add(inliers.size());
+
 					writeInliers(pointWriter, consensusSetId, inliers );
 					writeModel( modelWriter, consensusSetId, (AbstractAffineModel3D<?>)model);
+
+					final ArrayList<Double> errors = errors(model, inliers);
+					final Stats stats = Stats.compute(errors);
+					statsPerModel.add(stats);
+					statsWriter.println( String.format("%d,%s", consensusSetId, stats.printCsvRow()));
+
 					consensusSetId++;
 
 					if ( multiConsenus )
@@ -267,7 +294,6 @@ public class PairwiseModelFitMultiHypothesis {
 					System.out.println( "NO model found.");
 				}
 			} while ( multiConsenus && modelFound && inliers.size() >= minNumCorrespondences );
-			
 
 			try {
 
@@ -276,10 +302,14 @@ public class PairwiseModelFitMultiHypothesis {
 					model.fit(allMatches);
 					writeModel(modelWriter, -1, (AbstractAffineModel3D<?>)model);
 
+					final ArrayList<Double> errors = errors(model, allMatches);
+					final Stats stats = Stats.compute(errors);
+					statsPerModel.add(stats);
+					statsWriter.println( String.format("%d,%s", -1, stats.printCsvRow()));
+
 					if (pointImgPath != null) {
 						makeImage(pointImgPath, allMatches, inlierSetSizes);
 					}
-
 				}
 			} catch (NotEnoughDataPointsException e) {
 				e.printStackTrace();
@@ -289,7 +319,25 @@ public class PairwiseModelFitMultiHypothesis {
 
 			pointWriter.close();
 			modelWriter.close();
+			statsWriter.close();
 		});
+	}
+	
+	public static ArrayList<Double> errors(
+			Model model, List< PointMatchGeneric< InterestPoint > > inliers ) {
+
+		int N = inliers.size();
+		ArrayList<Double> errors = new ArrayList<>();
+		for (int i = 0; i < N; i++)
+			errors.add(error(model, inliers.get(i)));
+		
+		return errors;
+	}
+
+	public static double error(
+			Model model, PointMatchGeneric< InterestPoint > match ) {
+
+		return BwPointsLoo.distance(match.getPoint1().getW(), match.getPoint2().getW());
 	}
 
 	public void writeModel(final PrintWriter writer, int id, AbstractAffineModel3D<?> model ) {
@@ -297,6 +345,10 @@ public class PairwiseModelFitMultiHypothesis {
 		model.getMatrix(params);
 		writer.println( String.format("%d,%s",
 				id, print(params)));
+	}
+	
+	public void writeStats(final PrintWriter writer, int id, Stats stats ) {
+		writer.println( String.format("%d,%s", id, stats));
 	}
 
 	public void makeImage(final String file, final ArrayList<PointMatchGeneric<InterestPoint>> allMatches, final ArrayList<Integer> inlierSetSizes) {
@@ -312,7 +364,6 @@ public class PairwiseModelFitMultiHypothesis {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-
 	}
 
 	private static class CategorizedPoints {
